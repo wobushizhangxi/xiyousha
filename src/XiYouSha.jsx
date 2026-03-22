@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Heart, ScrollText, AlertCircle, RotateCcw, Check, Zap, Shield } from 'lucide-react';
+import { Heart, ScrollText, AlertCircle, RotateCcw, Check, Zap, Shield, X } from 'lucide-react';
 import { CARD_TYPES, CARDS_DB, DECK_CONFIG } from './config/gameConfig';
 import GameMenu from './components/GameMenu';
 import GameCard from './components/GameCard';
@@ -34,6 +34,9 @@ export default function XiYouSha() {
     const [currentTurnLogs, setCurrentTurnLogs] = useState([]);
     const [allHistoryLogs, setAllHistoryLogs] = useState([]);
     const [showHistory, setShowHistory] = useState(false);
+
+    // 新增：用于显示角色技能详情的状态 ('player' | 'ai' | null)
+    const [showSkillModal, setShowSkillModal] = useState(null);
 
     useEffect(() => { playerRef.current = player; }, [player]);
     useEffect(() => { aiRef.current = ai; }, [ai]);
@@ -149,14 +152,12 @@ export default function XiYouSha() {
 
         addLog("=== 你的回合开始 ===", true);
 
-        // 小白龙被动
         if (playerRef.current.id === 'xiaobailong' && playerRef.current.hp <= 2) {
             triggerTextAnim('龙脉!', 'buff', 'player');
             addLog(`🐉 【龙族血脉】触发！小白龙绝境逢生，额外摸 1 张牌！`);
             drawCards('player', 1);
         }
 
-        // 王母娘娘被动
         if (playerRef.current.id === 'wangmu' && playerRef.current.hp < playerRef.current.maxHp) {
             triggerTextAnim('蟠桃!', 'buff', 'player');
             addLog(`🍑 【蟠桃盛会】触发！王母娘娘体力未满，天降恩泽额外摸 1 张牌！`);
@@ -741,7 +742,11 @@ export default function XiYouSha() {
         <div className="relative flex flex-col h-screen bg-stone-200 overflow-hidden">
             <div className="relative z-20 bg-stone-800 text-white p-4 flex justify-between items-start shadow-xl">
                 <div className="flex items-start gap-4">
-                    <div className="relative text-5xl bg-stone-700 w-16 h-16 flex items-center justify-center rounded-full border-2 border-stone-500 mt-1">
+                    {/* 妖王头像增加了 onClick 唤起详情弹窗 */}
+                    <div
+                        className="relative text-5xl bg-stone-700 w-16 h-16 flex items-center justify-center rounded-full border-2 border-stone-500 mt-1 cursor-pointer hover:border-yellow-400 hover:scale-105 transition-all"
+                        onClick={() => setShowSkillModal('ai')}
+                    >
                         {ai.avatar}
                         {ai.isStunned && <div className="absolute -bottom-2 -right-2 bg-yellow-500 text-white text-xs px-1 rounded shadow animate-pulse">定身</div>}
                         {ai.wine > 0 && <div className="absolute -top-2 -right-2 bg-amber-500 text-white text-[10px] px-1 rounded-full shadow animate-bounce">伤害+</div>}
@@ -812,7 +817,11 @@ export default function XiYouSha() {
             }`}>
                 <div className="flex justify-between items-end mb-4 px-2">
                     <div className="flex items-center gap-4">
-                        <div className="relative text-5xl bg-stone-100 w-16 h-16 flex items-center justify-center rounded-2xl border-2 border-stone-300 shadow-inner">
+                        {/* 玩家头像增加了 onClick 唤起详情弹窗 */}
+                        <div
+                            className="relative text-5xl bg-stone-100 w-16 h-16 flex items-center justify-center rounded-2xl border-2 border-stone-300 shadow-inner cursor-pointer hover:border-yellow-500 hover:scale-105 transition-all"
+                            onClick={() => setShowSkillModal('player')}
+                        >
                             {player.avatar}
                             {player.wine > 0 && (
                                 <div className="absolute -top-3 -right-3 bg-amber-500 text-white text-[10px] font-black px-2 py-0.5 rounded-full border border-amber-300 animate-bounce shadow-md">
@@ -919,6 +928,29 @@ export default function XiYouSha() {
                     )}
                 </div>
             </div>
+
+            {/* 新增：角色技能详情弹窗 */}
+            {showSkillModal && (
+                <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[60] flex items-center justify-center p-4" onClick={() => setShowSkillModal(null)}>
+                    <div className="bg-stone-800 text-white w-full max-w-sm rounded-3xl overflow-hidden shadow-2xl border-4 border-stone-600 p-6 relative animate-in zoom-in-95 duration-200" onClick={e => e.stopPropagation()}>
+                        <button onClick={() => setShowSkillModal(null)} className="absolute top-4 right-4 p-2 hover:bg-stone-700 rounded-full text-stone-400 hover:text-white transition-colors"><X size={20}/></button>
+                        <div className="flex flex-col items-center mt-2">
+                            <div className="text-7xl mb-4 drop-shadow-lg">{showSkillModal === 'player' ? selectedPlayerDef.avatar : selectedEnemyDef.avatar}</div>
+                            <h3 className="text-2xl font-black mb-1 text-yellow-500">{showSkillModal === 'player' ? selectedPlayerDef.name : selectedEnemyDef.name}</h3>
+                            <div className="flex items-center gap-1 text-red-400 mb-6 font-mono text-sm">
+                                <Heart size={14} fill="currentColor"/> 体力上限: {showSkillModal === 'player' ? selectedPlayerDef.maxHp : selectedEnemyDef.maxHp}
+                            </div>
+                            <div className="w-full bg-stone-900/80 p-4 rounded-xl border border-stone-700 text-left">
+                                <div className="text-yellow-400 text-sm font-black mb-2 flex items-center gap-1.5"><Zap size={16}/> {showSkillModal === 'player' ? selectedPlayerDef.activeName : selectedEnemyDef.activeName}</div>
+                                <div className="text-[13px] text-stone-300 leading-relaxed mb-5">{showSkillModal === 'player' ? selectedPlayerDef.activeDesc : selectedEnemyDef.activeDesc}</div>
+
+                                <div className="text-blue-400 text-sm font-black mb-2 flex items-center gap-1.5"><Shield size={16}/> {showSkillModal === 'player' ? selectedPlayerDef.passiveName : selectedEnemyDef.passiveName}</div>
+                                <div className="text-[13px] text-stone-300 leading-relaxed">{showSkillModal === 'player' ? selectedPlayerDef.passiveDesc : selectedEnemyDef.passiveDesc}</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {showHistory && (
                 <HistoryModal logs={allHistoryLogs} onClose={() => setShowHistory(false)} />
