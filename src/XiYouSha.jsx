@@ -149,9 +149,17 @@ export default function XiYouSha() {
 
         addLog("=== 你的回合开始 ===", true);
 
+        // 小白龙被动
         if (playerRef.current.id === 'xiaobailong' && playerRef.current.hp <= 2) {
             triggerTextAnim('龙脉!', 'buff', 'player');
             addLog(`🐉 【龙族血脉】触发！小白龙绝境逢生，额外摸 1 张牌！`);
+            drawCards('player', 1);
+        }
+
+        // 王母娘娘被动
+        if (playerRef.current.id === 'wangmu' && playerRef.current.hp < playerRef.current.maxHp) {
+            triggerTextAnim('蟠桃!', 'buff', 'player');
+            addLog(`🍑 【蟠桃盛会】触发！王母娘娘体力未满，天降恩泽额外摸 1 张牌！`);
             drawCards('player', 1);
         }
 
@@ -196,17 +204,41 @@ export default function XiYouSha() {
             processPlayerAttack(1, '【降妖宝杖】');
             success = true;
         } else if (pid === 'xiaobailong') {
+            if (player.hand.length === 0) return addLog("⚠️ 没有手牌，无法发动【乘风破浪】");
             addLog(`🐉 小白龙发动【乘风破浪】！`);
             setPlayer(p => {
-                let newHand = p.hand;
-                if (p.hand.length > 0) {
-                    const rIdx = Math.floor(Math.random() * p.hand.length);
-                    newHand = p.hand.filter((_, i) => i !== rIdx);
-                    addLog(`🌊 随波逐流弃置了 1 张手牌`);
-                }
-                return { ...p, hand: newHand };
+                const rIdx = Math.floor(Math.random() * p.hand.length);
+                return { ...p, hand: p.hand.filter((_, i) => i !== rIdx) };
             });
+            addLog(`🌊 弃置了 1 张手牌`);
             setTimeout(() => drawCards('player', 2), 500);
+            success = true;
+        } else if (pid === 'tangseng') {
+            if (player.hand.length === 0) return addLog("⚠️ 没有手牌，无法发动【紧箍咒语】");
+            setPlayer(p => {
+                const rIdx = Math.floor(Math.random() * p.hand.length);
+                return { ...p, hand: p.hand.filter((_, i) => i !== rIdx) };
+            });
+            triggerTextAnim('-1', 'damage', 'ai');
+            setAi(a => ({ ...a, hp: Math.max(0, a.hp - 1) }));
+            addLog(`📿 唐僧发动【紧箍咒语】！弃置1张手牌，妖王无视防御失去 1 点体力！`);
+            if (ai.id === 'bone') {
+                setTimeout(() => {
+                    triggerTextAnim('遗恨!', 'buff', 'ai');
+                    addLog(`💀 【遗恨】生效！白骨精遭受折磨，摸取 1 张牌！`);
+                    drawCards('ai', 1);
+                }, 500);
+            }
+            success = true;
+        } else if (pid === 'wangmu') {
+            if (player.hp >= player.maxHp) return addLog("⚠️ 体力已满，无法发动【瑶池仙丹】");
+            if (player.hand.length === 0) return addLog("⚠️ 没有手牌，无法发动【瑶池仙丹】");
+            setPlayer(p => {
+                const rIdx = Math.floor(Math.random() * p.hand.length);
+                return { ...p, hp: p.hp + 1, hand: p.hand.filter((_, i) => i !== rIdx) };
+            });
+            triggerTextAnim('+1', 'heal', 'player');
+            addLog(`🍑 王母娘娘发动【瑶池仙丹】！弃置1张手牌，恢复 1 点体力！`);
             success = true;
         }
 
@@ -314,6 +346,13 @@ export default function XiYouSha() {
                     triggerTextAnim('化缘!', 'buff', 'player');
                     addLog("🧔 【任劳任怨】生效！额外化得 1 张手牌！");
                     drawCards('player', 1);
+                }, 400);
+            }
+            if (player.id === 'tangseng') {
+                setTimeout(() => {
+                    triggerTextAnim('慈悲!', 'buff', 'player');
+                    addLog("📿 【慈悲】生效！佛光普照，额外摸取 2 张手牌！");
+                    drawCards('player', 2);
                 }, 400);
             }
         } else if (card.id === CARD_TYPES.SCAN) {
@@ -453,6 +492,34 @@ export default function XiYouSha() {
             await delay(800);
         }
 
+        if (aiRef.current.id === 'spider' && !aiHasUsedSkill && aiRef.current.hand.length > 0 && !aiRef.current.isStunned && playerRef.current.hand.length > 0) {
+            aiHasUsedSkill = true;
+            triggerTextAnim('吐丝!', 'damage', 'player');
+            addLog(`🕸️ 蜘蛛精发动【夺命蛛丝】！消耗 1 张牌，强制使你失去 1 张牌并受 1 点伤害！`);
+            setAi(a => {
+                const rIdx = Math.floor(Math.random() * a.hand.length);
+                return {...a, hand: a.hand.filter((_, i) => i !== rIdx)};
+            });
+            setPlayer(p => {
+                let newHand = p.hand;
+                if (p.hand.length > 0) {
+                    const pIdx = Math.floor(Math.random() * p.hand.length);
+                    newHand = p.hand.filter((_, i) => i !== pIdx);
+                }
+                return {...p, hand: newHand, hp: Math.max(0, p.hp - 1)};
+            });
+            await delay(800);
+        }
+
+        if (aiRef.current.id === 'redboy' && !aiHasUsedSkill && aiRef.current.hp > 1 && !aiRef.current.isStunned) {
+            aiHasUsedSkill = true;
+            triggerTextAnim('吐火!', 'damage', 'player');
+            addLog(`🔥 红孩儿消耗 1 点体力发动【吐火】！直接烧伤你 1 点体力！`);
+            setAi(a => ({...a, hp: a.hp - 1}));
+            setPlayer(p => ({...p, hp: Math.max(0, p.hp - 1)}));
+            await delay(800);
+        }
+
         if (aiRef.current.isStunned) {
             addLog(`🌀 妖王被定身，本回合无法行动！`);
             setAi(a => ({ ...a, isStunned: false }));
@@ -536,6 +603,12 @@ export default function XiYouSha() {
             addLog(`${finalAi.name} 结束了回合`);
         }
 
+        if (aiRef.current.id === 'spider' && aiRef.current.hand.length >= 3 && playerRef.current.hp > 0) {
+            triggerTextAnim('盘丝!', 'buff', 'player');
+            addLog(`🕸️ 【盘丝阵】生效！蜘蛛精手牌充裕，吐出漫天蛛网将你【定身】！`);
+            setPlayer(p => ({...p, isStunned: true}));
+        }
+
         await delay(1200);
         startPlayerTurn();
     };
@@ -548,6 +621,7 @@ export default function XiYouSha() {
 
         if (card.id === CARD_TYPES.ATTACK) {
             let dmg = 1 + aiRef.current.wine;
+            if (aiRef.current.id === 'redboy') dmg += 1; // 红孩儿三昧真火
             if (aiRef.current.wine > 0) setAi(a => ({ ...a, wine: 0 }));
             addLog(`🔥 ${aiName} 祭出【降妖】向你袭来！(伤害${dmg})`);
             await delay(800);

@@ -12,7 +12,7 @@ export default function GameMenu({ gameState, setGameState, setSelectedPlayerDef
             <h1 className="text-5xl font-black mb-4 text-yellow-500 tracking-widest">西游杀</h1>
             <h2 className="text-2xl font-bold mb-8 text-stone-300">{title}</h2>
 
-            <div className="flex gap-6 max-w-6xl flex-wrap justify-center">
+            <div className="flex gap-4 max-w-7xl flex-wrap justify-center">
                 {options.map(char => (
                     <button
                         key={char.id}

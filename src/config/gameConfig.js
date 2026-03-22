@@ -32,23 +32,33 @@ export const DECK_CONFIG = {
 export const PLAYER_CHARACTERS = [
     {
         id: 'wukong', name: '孙悟空', maxHp: 4, avatar: '🐵',
-        passiveName: '【金箍棒】', passiveDesc: '被动：神兵之威！你使用的【降妖】伤害默认 +1。',
+        passiveName: '【金箍棒】', passiveDesc: '被动：你使用的【降妖】伤害默认 +1。',
         activeName: '【火眼金睛】', activeDesc: '主动：每回合限1次。洞察破绽，随机弃置妖王 1 张手牌。'
     },
     {
         id: 'bajie', name: '猪八戒', maxHp: 5, avatar: '🐷',
-        passiveName: '【皮糙肉厚】', passiveDesc: '被动：能吃能扛！你的手牌上限始终 +2。',
-        activeName: '【蓄力一击】', activeDesc: '主动：每回合限1次。消耗 1 点体力，使本回合下一击【降妖】伤害剧增(+2)！'
+        passiveName: '【皮糙肉厚】', passiveDesc: '被动：你的手牌上限始终 +2。',
+        activeName: '【蓄力一击】', activeDesc: '主动：每回合限1次。消耗 1 点体力，使下一次【降妖】伤害+2。'
     },
     {
         id: 'shaseng', name: '沙悟净', maxHp: 4, avatar: '🧔',
         passiveName: '【任劳任怨】', passiveDesc: '被动：每次使用恢复类道具后，额外摸 1 张牌。',
-        activeName: '【降妖宝杖】', activeDesc: '主动：每回合限1次。消耗 1 点体力，对妖王发动一次无视次数限制的【降妖】！'
+        activeName: '【降妖宝杖】', activeDesc: '主动：每回合限1次。消耗 1 点体力，对妖王发动一次无限制的【降妖】。'
     },
     {
         id: 'xiaobailong', name: '小白龙', maxHp: 4, avatar: '🐉',
-        passiveName: '【龙族血脉】', passiveDesc: '被动：绝境求生！回合开始时若体力≤2，自动摸 1 张牌。',
-        activeName: '【乘风破浪】', activeDesc: '主动：每回合限1次。随机弃置自己 1 张手牌，并摸 2 张牌。'
+        passiveName: '【龙族血脉】', passiveDesc: '被动：回合开始时若体力≤2，自动摸 1 张牌。',
+        activeName: '【乘风破浪】', activeDesc: '主动：每回合限1次。弃置自己 1 张手牌，并摸 2 张牌。'
+    },
+    {
+        id: 'tangseng', name: '唐三藏', maxHp: 4, avatar: '📿',
+        passiveName: '【慈悲】', passiveDesc: '被动：佛光普照！每次使用恢复类道具时，额外摸 2 张牌。',
+        activeName: '【紧箍咒语】', activeDesc: '主动：每回合限1次。弃置 1 张手牌，对妖王造成 1 点流失伤害。'
+    },
+    {
+        id: 'wangmu', name: '王母娘娘', maxHp: 4, avatar: '👑',
+        passiveName: '【蟠桃盛会】', passiveDesc: '被动：回合开始时若体力不满，自动摸 1 张牌。',
+        activeName: '【瑶池仙丹】', activeDesc: '主动：每回合限1次。弃置 1 张手牌，恢复 1 点体力。'
     }
 ];
 
@@ -72,5 +82,15 @@ export const ENEMY_CHARACTERS = [
         id: 'bone', name: '白骨精', maxHp: 4, avatar: '💀',
         passiveName: '【遗恨】', passiveDesc: '被动：睚眦必报！每次受到伤害后，自动摸 1 张牌。',
         activeName: '【吸魂】', activeDesc: '主动：每回合限1次。随机弃置玩家1张牌，若为攻击或闪避牌，恢复1点体力。'
+    },
+    {
+        id: 'redboy', name: '红孩儿', maxHp: 4, avatar: '🔥',
+        passiveName: '【三昧真火】', passiveDesc: '被动：烈焰灼心！打出的【降妖】伤害默认 +1。',
+        activeName: '【吐火】', activeDesc: '主动：回合开始时若体力大于1，消耗1点体力对玩家造成1点流失伤害。'
+    },
+    {
+        id: 'spider', name: '蜘蛛精', maxHp: 4, avatar: '🕷️',
+        passiveName: '【盘丝阵】', passiveDesc: '被动：回合结束时，若手牌数大于等于3，自动使玩家【定身】。',
+        activeName: '【夺命蛛丝】', activeDesc: '主动：消耗自己1张牌，强制使玩家失去1张牌并受1点流失伤害。'
     }
 ];
