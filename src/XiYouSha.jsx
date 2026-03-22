@@ -905,16 +905,40 @@ export default function XiYouSha() {
                 </div>
             )}
 
-            {/* 修改点：底部区域固定为 40vh */}
-            <div className={`absolute bottom-0 left-0 right-0 h-[40vh] flex flex-col z-20 p-4 pb-4 backdrop-blur-md border-t transition-all duration-500 ${
+            {/* 修改点：底部操作区分为左右两块 */}
+            <div className={`absolute bottom-0 left-0 right-0 h-[40vh] flex flex-row z-20 p-4 backdrop-blur-md border-t transition-all duration-500 ${
                 phase === 'PLAYER_DISCARD' ? 'bg-slate-900/95 border-slate-700' : 'bg-white/95 border-stone-200 shadow-[0_-10px_40px_-15px_rgba(0,0,0,0.1)]'
             }`}>
-                <div className="flex justify-between items-end mb-2 px-2 flex-shrink-0">
 
-                    {/* 左侧：操作按钮（原先在右侧，现移至左侧避免遮挡） */}
-                    <div className="flex items-center gap-3">
+                {/* 左侧：手牌区域（自动占据全部剩余宽度） */}
+                <div className="flex-1 min-w-0 h-full relative pr-4">
+                    <div ref={scrollRef} className="absolute inset-0 flex flex-nowrap gap-3 overflow-x-auto scrollbar-hide items-end pb-2 px-2">
+                        {player.hand.map((card) => {
+                            const isSelected = phase === 'PLAYER_DISCARD' && discardSelection.includes(card.uid);
+                            return (
+                                <GameCard
+                                    key={card.uid}
+                                    card={card}
+                                    phase={phase}
+                                    isSelected={isSelected}
+                                    canConfirmDiscard={canConfirmDiscard}
+                                    onClick={() => handlePlayCard(card)}
+                                />
+                            );
+                        })}
+                        {player.hand.length === 0 && (
+                            <div className="w-full text-center py-10 text-stone-400 italic flex items-end justify-center h-full pb-10">手中空空如也...</div>
+                        )}
+                    </div>
+                </div>
+
+                {/* 右侧：操作按钮(右上) 与 玩家信息(右下) */}
+                <div className="w-auto flex flex-col justify-between items-end pl-4 pointer-events-none border-l border-stone-300/30">
+
+                    {/* 右上角：操作按钮区 */}
+                    <div className="flex flex-col items-end gap-3 pointer-events-auto">
                         {phase === 'PLAYER_PLAY' && (
-                            <>
+                            <div className="flex items-center gap-3">
                                 <button
                                     onClick={handlePlayerActiveSkill}
                                     disabled={hasUsedActiveSkill}
@@ -927,11 +951,11 @@ export default function XiYouSha() {
                                 <button onClick={checkEndTurn} className="bg-stone-900 text-white px-8 py-3 rounded-2xl font-black hover:bg-black hover:-translate-y-1 active:scale-95 transition-all shadow-xl">
                                     结束出牌
                                 </button>
-                            </>
+                            </div>
                         )}
 
                         {phase === 'PLAYER_RESPONSE' && promptState && (
-                            <>
+                            <div className="flex items-center gap-3">
                                 <div className="flex items-center gap-2 text-white bg-blue-800 px-5 py-3 rounded-2xl border-2 border-blue-600 font-bold animate-pulse shadow-lg shadow-blue-900/50">
                                     <Shield size={20} className="text-blue-300" />
                                     {promptState.message}
@@ -946,39 +970,40 @@ export default function XiYouSha() {
                                 >
                                     放弃
                                 </button>
-                            </>
+                            </div>
                         )}
 
                         {phase === 'PLAYER_DISCARD' && (
-                            <>
-                                <div className="flex items-center gap-2 text-white bg-slate-800 px-4 py-2 rounded-xl border border-slate-600 font-bold">
+                            <div className="flex flex-col items-end gap-3">
+                                <div className="flex items-center gap-2 text-white bg-slate-800 px-4 py-2 rounded-xl border border-slate-600 font-bold shadow-lg">
                                     <AlertCircle size={18} className="text-yellow-400" />
                                     弃置 <span className="text-yellow-400 mx-1">{excessCards}</span> 张牌
                                     <span className="text-slate-400 text-sm ml-2 font-normal">(已选 {discardSelection.length})</span>
                                 </div>
-                                {discardSelection.length > 0 && (
-                                    <button onClick={() => setDiscardSelection([])} className="p-2 text-slate-300 hover:text-white bg-slate-700 rounded-xl hover:bg-slate-600 transition-colors">
-                                        <RotateCcw size={20} />
+                                <div className="flex items-center gap-3">
+                                    {discardSelection.length > 0 && (
+                                        <button onClick={() => setDiscardSelection([])} className="p-3 text-slate-300 hover:text-white bg-slate-700 rounded-2xl hover:bg-slate-600 transition-colors shadow-lg">
+                                            <RotateCcw size={20} />
+                                        </button>
+                                    )}
+                                    <button
+                                        onClick={confirmDiscard}
+                                        disabled={!canConfirmDiscard}
+                                        className={`flex items-center gap-2 px-8 py-3 rounded-2xl font-black transition-all shadow-lg ${
+                                            canConfirmDiscard
+                                                ? 'bg-red-600 text-white hover:bg-red-500 hover:scale-105 active:scale-95 cursor-pointer animate-pulse'
+                                                : 'bg-slate-700 text-slate-500 cursor-not-allowed'
+                                        }`}
+                                    >
+                                        <Check size={20} /> 确定
                                     </button>
-                                )}
-                                <button
-                                    onClick={confirmDiscard}
-                                    disabled={!canConfirmDiscard}
-                                    className={`flex items-center gap-2 px-8 py-3 rounded-2xl font-black transition-all shadow-lg ${
-                                        canConfirmDiscard
-                                            ? 'bg-red-600 text-white hover:bg-red-500 hover:scale-105 active:scale-95 cursor-pointer animate-pulse'
-                                            : 'bg-slate-700 text-slate-500 cursor-not-allowed'
-                                    }`}
-                                >
-                                    <Check size={20} /> 确定
-                                </button>
-                            </>
+                                </div>
+                            </div>
                         )}
                     </div>
 
-                    {/* 右侧：玩家头像与信息（增加右侧靠齐和一键隐藏功能） */}
-                    <div className="flex flex-col items-end relative z-30">
-                        {/* 隐藏/显示按钮 */}
+                    {/* 右下角：玩家信息区 */}
+                    <div className="flex flex-col items-end relative pointer-events-auto">
                         <button
                             onClick={() => setIsPlayerInfoHidden(!isPlayerInfoHidden)}
                             className="absolute -top-6 right-0 text-[10px] bg-stone-700 text-stone-300 px-3 py-1 rounded-t-lg hover:text-white hover:bg-stone-600 transition-colors shadow-md"
@@ -987,7 +1012,7 @@ export default function XiYouSha() {
                         </button>
 
                         {!isPlayerInfoHidden ? (
-                            <div className="flex items-center gap-4 flex-row-reverse text-right bg-white/60 p-2 pr-0 rounded-2xl">
+                            <div className="flex items-center gap-4 flex-row-reverse text-right bg-white/60 p-2 pr-0 rounded-2xl mt-4">
                                 <div
                                     className="relative text-5xl bg-stone-100 w-16 h-16 flex items-center justify-center rounded-2xl border-2 border-stone-300 shadow-inner cursor-pointer hover:border-yellow-500 hover:scale-105 transition-all flex-shrink-0"
                                     onClick={() => setShowSkillModal('player')}
@@ -1024,7 +1049,6 @@ export default function XiYouSha() {
                                 </div>
                             </div>
                         ) : (
-                            // 隐藏状态：只有一个微缩头像和血量指示器
                             <div
                                 className="relative text-3xl bg-stone-100 w-12 h-12 flex items-center justify-center rounded-xl border-2 border-stone-300 shadow-md cursor-pointer hover:border-yellow-500 hover:scale-105 transition-all mt-2"
                                 onClick={() => setShowSkillModal('player')}
@@ -1043,28 +1067,9 @@ export default function XiYouSha() {
                         )}
                     </div>
                 </div>
-
-                {/* 修改点：利用 flex-1 让卡牌区自动撑满剩下的全部高度 */}
-                <div ref={scrollRef} className="flex flex-nowrap gap-3 overflow-x-auto py-2 px-2 scrollbar-hide items-end flex-1 min-h-0">
-                    {player.hand.map((card) => {
-                        const isSelected = phase === 'PLAYER_DISCARD' && discardSelection.includes(card.uid);
-                        return (
-                            <GameCard
-                                key={card.uid}
-                                card={card}
-                                phase={phase}
-                                isSelected={isSelected}
-                                canConfirmDiscard={canConfirmDiscard}
-                                onClick={() => handlePlayCard(card)}
-                            />
-                        );
-                    })}
-                    {player.hand.length === 0 && (
-                        <div className="w-full text-center py-10 text-stone-400 italic">手中空空如也...</div>
-                    )}
-                </div>
             </div>
 
+            {/* 角色技能详情弹窗 */}
             {showSkillModal && (
                 <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[60] flex items-center justify-center p-4" onClick={() => setShowSkillModal(null)}>
                     <div className="bg-stone-800 text-white w-full max-w-sm rounded-3xl overflow-hidden shadow-2xl border-4 border-stone-600 p-6 relative animate-in zoom-in-95 duration-200" onClick={e => e.stopPropagation()}>
