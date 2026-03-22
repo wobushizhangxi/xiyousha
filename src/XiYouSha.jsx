@@ -18,7 +18,6 @@ export default function XiYouSha() {
     const [gameState, setGameState] = useState('MENU_PLAYER');
     const [selectedPlayerDef, setSelectedPlayerDef] = useState(null);
     const [selectedEnemyDef, setSelectedEnemyDef] = useState(null);
-    // 增加 equips 装备槽字段
     const [player, setPlayer] = useState({ id: '', name: '', hp: 4, maxHp: 4, hand: [], wine: 0, isStunned: false, equips: { weapon: null, armor: null } });
     const [ai, setAi] = useState({ id: '', name: '', hp: 5, maxHp: 5, hand: [], wine: 0, isStunned: false, equips: { weapon: null, armor: null } });
 
@@ -221,7 +220,6 @@ export default function XiYouSha() {
                 return { ...p, hand: p.hand.filter((_, i) => i !== rIdx) };
             });
 
-            // 检查妖王是否防具免疫
             if (ai.equips.armor?.id === CARD_TYPES.EQUIP_ARMOR_CLOTH) {
                 addLog(`🛡️ 妖王的【锦襕袈裟】散发佛光，免疫了【紧箍咒语】！`);
             } else {
@@ -255,7 +253,6 @@ export default function XiYouSha() {
     const processPlayerAttack = (baseDamage, sourceCardName = '【降妖】') => {
         let dmg = baseDamage + playerRef.current.wine;
 
-        // 伤害加成判定
         if (playerRef.current.id === 'wukong') dmg += 1;
         if (playerRef.current.equips.weapon?.id === CARD_TYPES.EQUIP_WEAPON_SPEAR) dmg += 1;
 
@@ -267,7 +264,6 @@ export default function XiYouSha() {
             const currentAi = aiRef.current;
             let finalDmg = dmg;
 
-            // 伤害减免判定
             if (currentAi.id === 'ironfan') {
                 finalDmg = Math.min(finalDmg, 1);
                 addLog(`🪭 【护体罡风】生效！铁扇公主将伤害化解至 ${finalDmg} 点`);
@@ -344,7 +340,6 @@ export default function XiYouSha() {
 
         if (phase !== 'PLAYER_PLAY') return;
 
-        // 装备牌判定
         if (card.type === 'weapon') {
             setPlayer(p => ({ ...p, hand: p.hand.filter(c => c.uid !== card.uid), equips: { ...p.equips, weapon: card } }));
             addLog(`🗡️ 你装备了武器 ${card.name}`);
@@ -356,7 +351,6 @@ export default function XiYouSha() {
             return;
         }
 
-        // 混铁棍解除攻击次数限制
         const canAttackMultiple = player.equips.weapon?.id === CARD_TYPES.EQUIP_WEAPON_STICK;
         if (card.id === CARD_TYPES.ATTACK && hasAttacked && !canAttackMultiple) return addLog("⚠️ 本回合已出过【降妖】(可使用【混铁棍】/【风火轮】解除)");
 
@@ -622,23 +616,19 @@ export default function XiYouSha() {
                 continue;
             }
 
-            // 1. 回血
             if (currentAi.hp < currentAi.maxHp) {
                 playIdx = currentAi.hand.findIndex(c => c.id === CARD_TYPES.HEAL_BIG);
                 if (playIdx === -1) playIdx = currentAi.hand.findIndex(c => c.id === CARD_TYPES.HEAL);
             }
-            // 2. 穿装备优先
             if (playIdx === -1) playIdx = currentAi.hand.findIndex(c => c.type === 'weapon' || c.type === 'armor');
-            // 3. 锦囊牌
             if (playIdx === -1) {
                 playIdx = currentAi.hand.findIndex(c => [
                     CARD_TYPES.SCAN, CARD_TYPES.DESTROY, CARD_TYPES.STEAL,
                     CARD_TYPES.ARROW, CARD_TYPES.MIRROR, CARD_TYPES.PIERCE, CARD_TYPES.WHEELS
                 ].includes(c.id));
             }
-            // 4. 定身
             if (playIdx === -1 && !playerRef.current.isStunned) playIdx = currentAi.hand.findIndex(c => c.id === CARD_TYPES.STUN);
-            // 5. 喝酒 & 攻击
+
             const canAttackMultiple = currentAi.equips.weapon?.id === CARD_TYPES.EQUIP_WEAPON_STICK;
             if (playIdx === -1 && currentAi.wine === 0 && (!aiHasAttacked || canAttackMultiple)) {
                 if (currentAi.hand.some(c => c.id === CARD_TYPES.ATTACK)) playIdx = currentAi.hand.findIndex(c => c.id === CARD_TYPES.WINE);
@@ -681,7 +671,6 @@ export default function XiYouSha() {
 
         triggerCardAnim(card, 'ai');
 
-        // AI 装备逻辑
         if (card.type === 'weapon') {
             setAi(a => ({ ...a, equips: { ...a.equips, weapon: card } }));
             addLog(`🗡️ ${aiName} 装备了武器 ${card.name}`);
@@ -714,7 +703,6 @@ export default function XiYouSha() {
                 await delay(500);
             }
 
-            // 玩家减伤判定
             if (playerRef.current.equips.armor?.id === CARD_TYPES.EQUIP_ARMOR_GOLD) {
                 dmg = Math.max(0, dmg - 1);
                 addLog(`🛡️ 你的【锁子黄金甲】发威，强制抵消了 1 点伤害！`);
@@ -834,7 +822,6 @@ export default function XiYouSha() {
 
     return (
         <div className="relative flex flex-col h-screen bg-stone-200 overflow-hidden">
-            {/* 顶部：敌人状态 */}
             <div className="relative z-20 bg-stone-800 text-white p-4 flex justify-between items-start shadow-xl">
                 <div className="flex items-start gap-4">
                     <div
@@ -857,7 +844,6 @@ export default function XiYouSha() {
                             <div className="text-[10px] text-yellow-300 flex items-center gap-1 mb-0.5"><Zap size={10}/> {selectedEnemyDef.activeName}</div>
                             <div className="text-[10px] text-blue-300 flex items-center gap-1"><Shield size={10}/> {selectedEnemyDef.passiveName}</div>
                         </div>
-                        {/* AI 装备槽 UI */}
                         <div className="flex gap-2 mt-2">
                             <div className={`text-[11px] font-bold px-2 py-0.5 rounded border ${ai.equips.weapon ? 'bg-rose-900/50 text-rose-300 border-rose-700' : 'bg-stone-700/50 text-stone-400 border-stone-600'}`}>
                                 🗡️ {ai.equips.weapon ? ai.equips.weapon.name : '武器栏空'}
@@ -873,8 +859,7 @@ export default function XiYouSha() {
                 </button>
             </div>
 
-            {/* 日志区 */}
-            <div ref={logContainerRef} className="absolute inset-0 z-0 overflow-y-auto px-6 pt-40 pb-[380px] scroll-smooth">
+            <div ref={logContainerRef} className="absolute inset-0 z-0 overflow-y-auto px-6 pt-36 pb-[42vh] scroll-smooth">
                 <div className="flex flex-col items-center space-y-4 min-h-full">
                     <div className="flex-1"></div>
                     {currentTurnLogs.map((log, i) => (
@@ -889,7 +874,6 @@ export default function XiYouSha() {
                 </div>
             </div>
 
-            {/* 动画层 */}
             {animatingCard && (
                 <div className="absolute inset-0 z-40 flex items-center justify-center pointer-events-none">
                     <div key={animatingCard.id} className={`
@@ -919,11 +903,11 @@ export default function XiYouSha() {
                 </div>
             )}
 
-            {/* 底部玩家区 */}
-            <div className={`absolute bottom-0 left-0 right-0 z-20 p-4 pb-8 backdrop-blur-md border-t transition-all duration-500 ${
+            {/* 修改点：底部区域固定为 40vh */}
+            <div className={`absolute bottom-0 left-0 right-0 h-[40vh] flex flex-col z-20 p-4 pb-4 backdrop-blur-md border-t transition-all duration-500 ${
                 phase === 'PLAYER_DISCARD' ? 'bg-slate-900/95 border-slate-700' : 'bg-white/95 border-stone-200 shadow-[0_-10px_40px_-15px_rgba(0,0,0,0.1)]'
             }`}>
-                <div className="flex justify-between items-end mb-4 px-2">
+                <div className="flex justify-between items-end mb-2 px-2 flex-shrink-0">
                     <div className="flex items-center gap-4">
                         <div
                             className="relative text-5xl bg-stone-100 w-16 h-16 flex items-center justify-center rounded-2xl border-2 border-stone-300 shadow-inner cursor-pointer hover:border-yellow-500 hover:scale-105 transition-all"
@@ -950,7 +934,6 @@ export default function XiYouSha() {
                                 <div className="text-yellow-600 bg-yellow-50 px-1.5 py-0.5 rounded flex items-center gap-0.5"><Zap size={10}/> {selectedPlayerDef.activeName}</div>
                                 <div className="text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded flex items-center gap-0.5"><Shield size={10}/> {selectedPlayerDef.passiveName}</div>
                             </div>
-                            {/* 玩家 装备槽 UI */}
                             <div className="flex gap-2 mt-2">
                                 <div className={`text-[11px] font-bold px-2 py-0.5 rounded border ${player.equips.weapon ? 'bg-rose-50 text-rose-700 border-rose-200' : 'bg-stone-100 text-stone-400 border-stone-200'}`}>
                                     🗡️ {player.equips.weapon ? player.equips.weapon.name : '武器栏空'}
@@ -1025,7 +1008,8 @@ export default function XiYouSha() {
                     )}
                 </div>
 
-                <div ref={scrollRef} className="flex flex-nowrap gap-3 overflow-x-auto py-4 px-2 scrollbar-hide items-end h-[220px]">
+                {/* 修改点：利用 flex-1 让卡牌区自动撑满剩下的全部高度 */}
+                <div ref={scrollRef} className="flex flex-nowrap gap-3 overflow-x-auto py-2 px-2 scrollbar-hide items-end flex-1 min-h-0">
                     {player.hand.map((card) => {
                         const isSelected = phase === 'PLAYER_DISCARD' && discardSelection.includes(card.uid);
                         return (
@@ -1045,7 +1029,6 @@ export default function XiYouSha() {
                 </div>
             </div>
 
-            {/* 角色技能详情弹窗 */}
             {showSkillModal && (
                 <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[60] flex items-center justify-center p-4" onClick={() => setShowSkillModal(null)}>
                     <div className="bg-stone-800 text-white w-full max-w-sm rounded-3xl overflow-hidden shadow-2xl border-4 border-stone-600 p-6 relative animate-in zoom-in-95 duration-200" onClick={e => e.stopPropagation()}>
