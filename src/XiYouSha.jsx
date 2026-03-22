@@ -36,6 +36,8 @@ export default function XiYouSha() {
     const [showHistory, setShowHistory] = useState(false);
 
     const [showSkillModal, setShowSkillModal] = useState(null);
+    // 新增：用于控制是否隐藏玩家详细信息的开关状态
+    const [isPlayerInfoHidden, setIsPlayerInfoHidden] = useState(false);
 
     useEffect(() => { playerRef.current = player; }, [player]);
     useEffect(() => { aiRef.current = ai; }, [ai]);
@@ -908,104 +910,138 @@ export default function XiYouSha() {
                 phase === 'PLAYER_DISCARD' ? 'bg-slate-900/95 border-slate-700' : 'bg-white/95 border-stone-200 shadow-[0_-10px_40px_-15px_rgba(0,0,0,0.1)]'
             }`}>
                 <div className="flex justify-between items-end mb-2 px-2 flex-shrink-0">
-                    <div className="flex items-center gap-4">
-                        <div
-                            className="relative text-5xl bg-stone-100 w-16 h-16 flex items-center justify-center rounded-2xl border-2 border-stone-300 shadow-inner cursor-pointer hover:border-yellow-500 hover:scale-105 transition-all"
-                            onClick={() => setShowSkillModal('player')}
-                        >
-                            {player.avatar}
-                            {player.wine > 0 && (
-                                <div className="absolute -top-3 -right-3 bg-amber-500 text-white text-[10px] font-black px-2 py-0.5 rounded-full border border-amber-300 animate-bounce shadow-md">
-                                    伤害+{player.wine}
+
+                    {/* 左侧：操作按钮（原先在右侧，现移至左侧避免遮挡） */}
+                    <div className="flex items-center gap-3">
+                        {phase === 'PLAYER_PLAY' && (
+                            <>
+                                <button
+                                    onClick={handlePlayerActiveSkill}
+                                    disabled={hasUsedActiveSkill}
+                                    className={`flex items-center gap-1 px-5 py-3 rounded-2xl font-black transition-all shadow-lg ${
+                                        !hasUsedActiveSkill ? 'bg-indigo-600 text-white hover:bg-indigo-500 hover:-translate-y-1 active:scale-95' : 'bg-stone-300 text-stone-500 cursor-not-allowed'
+                                    }`}
+                                >
+                                    <Zap size={18} /> {hasUsedActiveSkill ? '已发动' : '发动技能'}
+                                </button>
+                                <button onClick={checkEndTurn} className="bg-stone-900 text-white px-8 py-3 rounded-2xl font-black hover:bg-black hover:-translate-y-1 active:scale-95 transition-all shadow-xl">
+                                    结束出牌
+                                </button>
+                            </>
+                        )}
+
+                        {phase === 'PLAYER_RESPONSE' && promptState && (
+                            <>
+                                <div className="flex items-center gap-2 text-white bg-blue-800 px-5 py-3 rounded-2xl border-2 border-blue-600 font-bold animate-pulse shadow-lg shadow-blue-900/50">
+                                    <Shield size={20} className="text-blue-300" />
+                                    {promptState.message}
                                 </div>
-                            )}
-                        </div>
-                        <div>
-                            <div className="font-bold text-lg flex items-center gap-2 text-stone-800">
-                                {player.name}
-                                <span className={`text-xs font-bold mt-1 tracking-tighter ml-2 ${phase === 'PLAYER_DISCARD' ? 'text-slate-400' : 'text-stone-500'}`}>
-                                    HP {player.hp} / {player.maxHp}
-                                </span>
-                            </div>
-                            <div className="flex gap-1 mt-1 mb-1">
-                                {[...Array(Math.max(0, player.hp))].map((_, i) => <Heart key={i} size={18} fill="#ef4444" color="#ef4444" />)}
-                            </div>
-                            <div className="flex gap-2 text-[10px]">
-                                <div className="text-yellow-600 bg-yellow-50 px-1.5 py-0.5 rounded flex items-center gap-0.5"><Zap size={10}/> {selectedPlayerDef.activeName}</div>
-                                <div className="text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded flex items-center gap-0.5"><Shield size={10}/> {selectedPlayerDef.passiveName}</div>
-                            </div>
-                            <div className="flex gap-2 mt-2">
-                                <div className={`text-[11px] font-bold px-2 py-0.5 rounded border ${player.equips.weapon ? 'bg-rose-50 text-rose-700 border-rose-200' : 'bg-stone-100 text-stone-400 border-stone-200'}`}>
-                                    🗡️ {player.equips.weapon ? player.equips.weapon.name : '武器栏空'}
+                                <button
+                                    onClick={() => {
+                                        setPhase('AI_TURN');
+                                        setPromptState(null);
+                                        if (responseResolver.current) responseResolver.current({ dodged: false });
+                                    }}
+                                    className="bg-stone-700 text-stone-200 px-8 py-3 rounded-2xl font-black hover:bg-stone-600 active:scale-95 transition-all shadow-lg"
+                                >
+                                    放弃
+                                </button>
+                            </>
+                        )}
+
+                        {phase === 'PLAYER_DISCARD' && (
+                            <>
+                                <div className="flex items-center gap-2 text-white bg-slate-800 px-4 py-2 rounded-xl border border-slate-600 font-bold">
+                                    <AlertCircle size={18} className="text-yellow-400" />
+                                    弃置 <span className="text-yellow-400 mx-1">{excessCards}</span> 张牌
+                                    <span className="text-slate-400 text-sm ml-2 font-normal">(已选 {discardSelection.length})</span>
                                 </div>
-                                <div className={`text-[11px] font-bold px-2 py-0.5 rounded border ${player.equips.armor ? 'bg-amber-50 text-amber-700 border-amber-200' : 'bg-stone-100 text-stone-400 border-stone-200'}`}>
-                                    🛡️ {player.equips.armor ? player.equips.armor.name : '防具栏空'}
-                                </div>
-                            </div>
-                        </div>
+                                {discardSelection.length > 0 && (
+                                    <button onClick={() => setDiscardSelection([])} className="p-2 text-slate-300 hover:text-white bg-slate-700 rounded-xl hover:bg-slate-600 transition-colors">
+                                        <RotateCcw size={20} />
+                                    </button>
+                                )}
+                                <button
+                                    onClick={confirmDiscard}
+                                    disabled={!canConfirmDiscard}
+                                    className={`flex items-center gap-2 px-8 py-3 rounded-2xl font-black transition-all shadow-lg ${
+                                        canConfirmDiscard
+                                            ? 'bg-red-600 text-white hover:bg-red-500 hover:scale-105 active:scale-95 cursor-pointer animate-pulse'
+                                            : 'bg-slate-700 text-slate-500 cursor-not-allowed'
+                                    }`}
+                                >
+                                    <Check size={20} /> 确定
+                                </button>
+                            </>
+                        )}
                     </div>
 
-                    {phase === 'PLAYER_PLAY' && (
-                        <div className="flex items-center gap-3">
-                            <button
-                                onClick={handlePlayerActiveSkill}
-                                disabled={hasUsedActiveSkill}
-                                className={`flex items-center gap-1 px-5 py-3 rounded-2xl font-black transition-all shadow-lg ${
-                                    !hasUsedActiveSkill ? 'bg-indigo-600 text-white hover:bg-indigo-500 hover:-translate-y-1 active:scale-95' : 'bg-stone-300 text-stone-500 cursor-not-allowed'
-                                }`}
-                            >
-                                <Zap size={18} /> {hasUsedActiveSkill ? '已发动' : '发动技能'}
-                            </button>
-                            <button onClick={checkEndTurn} className="bg-stone-900 text-white px-8 py-3 rounded-2xl font-black hover:bg-black hover:-translate-y-1 active:scale-95 transition-all shadow-xl">
-                                结束出牌
-                            </button>
-                        </div>
-                    )}
+                    {/* 右侧：玩家头像与信息（增加右侧靠齐和一键隐藏功能） */}
+                    <div className="flex flex-col items-end relative z-30">
+                        {/* 隐藏/显示按钮 */}
+                        <button
+                            onClick={() => setIsPlayerInfoHidden(!isPlayerInfoHidden)}
+                            className="absolute -top-6 right-0 text-[10px] bg-stone-700 text-stone-300 px-3 py-1 rounded-t-lg hover:text-white hover:bg-stone-600 transition-colors shadow-md"
+                        >
+                            {isPlayerInfoHidden ? '显示信息' : '隐藏信息'}
+                        </button>
 
-                    {phase === 'PLAYER_RESPONSE' && promptState && (
-                        <div className="flex items-center gap-3">
-                            <div className="flex items-center gap-2 text-white bg-blue-800 px-5 py-3 rounded-2xl border-2 border-blue-600 font-bold animate-pulse shadow-lg shadow-blue-900/50">
-                                <Shield size={20} className="text-blue-300" />
-                                {promptState.message}
+                        {!isPlayerInfoHidden ? (
+                            <div className="flex items-center gap-4 flex-row-reverse text-right bg-white/60 p-2 pr-0 rounded-2xl">
+                                <div
+                                    className="relative text-5xl bg-stone-100 w-16 h-16 flex items-center justify-center rounded-2xl border-2 border-stone-300 shadow-inner cursor-pointer hover:border-yellow-500 hover:scale-105 transition-all flex-shrink-0"
+                                    onClick={() => setShowSkillModal('player')}
+                                >
+                                    {player.avatar}
+                                    {player.wine > 0 && (
+                                        <div className="absolute -top-3 -right-3 bg-amber-500 text-white text-[10px] font-black px-2 py-0.5 rounded-full border border-amber-300 animate-bounce shadow-md">
+                                            伤害+{player.wine}
+                                        </div>
+                                    )}
+                                </div>
+                                <div>
+                                    <div className="font-bold text-lg flex items-center justify-end gap-2 text-stone-800">
+                                        <span className={`text-xs font-bold mt-1 tracking-tighter mr-2 ${phase === 'PLAYER_DISCARD' ? 'text-slate-400' : 'text-stone-500'}`}>
+                                            HP {player.hp} / {player.maxHp}
+                                        </span>
+                                        {player.name}
+                                    </div>
+                                    <div className="flex gap-1 mt-1 mb-1 justify-end">
+                                        {[...Array(Math.max(0, player.hp))].map((_, i) => <Heart key={i} size={18} fill="#ef4444" color="#ef4444" />)}
+                                    </div>
+                                    <div className="flex gap-2 text-[10px] justify-end">
+                                        <div className="text-yellow-600 bg-yellow-50 px-1.5 py-0.5 rounded flex items-center gap-0.5"><Zap size={10}/> {selectedPlayerDef.activeName}</div>
+                                        <div className="text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded flex items-center gap-0.5"><Shield size={10}/> {selectedPlayerDef.passiveName}</div>
+                                    </div>
+                                    <div className="flex gap-2 mt-2 justify-end">
+                                        <div className={`text-[11px] font-bold px-2 py-0.5 rounded border ${player.equips.weapon ? 'bg-rose-50 text-rose-700 border-rose-200' : 'bg-stone-100 text-stone-400 border-stone-200'}`}>
+                                            🗡️ {player.equips.weapon ? player.equips.weapon.name : '武器栏空'}
+                                        </div>
+                                        <div className={`text-[11px] font-bold px-2 py-0.5 rounded border ${player.equips.armor ? 'bg-amber-50 text-amber-700 border-amber-200' : 'bg-stone-100 text-stone-400 border-stone-200'}`}>
+                                            🛡️ {player.equips.armor ? player.equips.armor.name : '防具栏空'}
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
-                            <button
-                                onClick={() => {
-                                    setPhase('AI_TURN');
-                                    setPromptState(null);
-                                    if (responseResolver.current) responseResolver.current({ dodged: false });
-                                }}
-                                className="bg-stone-700 text-stone-200 px-8 py-3 rounded-2xl font-black hover:bg-stone-600 active:scale-95 transition-all shadow-lg"
+                        ) : (
+                            // 隐藏状态：只有一个微缩头像和血量指示器
+                            <div
+                                className="relative text-3xl bg-stone-100 w-12 h-12 flex items-center justify-center rounded-xl border-2 border-stone-300 shadow-md cursor-pointer hover:border-yellow-500 hover:scale-105 transition-all mt-2"
+                                onClick={() => setShowSkillModal('player')}
+                                title="点击查看详情"
                             >
-                                放弃
-                            </button>
-                        </div>
-                    )}
-
-                    {phase === 'PLAYER_DISCARD' && (
-                        <div className="flex items-center gap-3">
-                            <div className="flex items-center gap-2 text-white bg-slate-800 px-4 py-2 rounded-xl border border-slate-600 font-bold">
-                                <AlertCircle size={18} className="text-yellow-400" />
-                                弃置 <span className="text-yellow-400 mx-1">{excessCards}</span> 张牌
-                                <span className="text-slate-400 text-sm ml-2 font-normal">(已选 {discardSelection.length})</span>
+                                {player.avatar}
+                                <div className="absolute -bottom-2 -left-2 bg-red-500 text-white text-[10px] font-black px-1.5 py-0.5 rounded-full border border-red-300 shadow">
+                                    HP {player.hp}
+                                </div>
+                                {player.wine > 0 && (
+                                    <div className="absolute -top-2 -right-2 bg-amber-500 text-white text-[8px] font-black px-1.5 py-[2px] rounded-full border border-amber-300">
+                                        伤害+{player.wine}
+                                    </div>
+                                )}
                             </div>
-                            {discardSelection.length > 0 && (
-                                <button onClick={() => setDiscardSelection([])} className="p-2 text-slate-300 hover:text-white bg-slate-700 rounded-xl hover:bg-slate-600 transition-colors">
-                                    <RotateCcw size={20} />
-                                </button>
-                            )}
-                            <button
-                                onClick={confirmDiscard}
-                                disabled={!canConfirmDiscard}
-                                className={`flex items-center gap-2 px-8 py-3 rounded-2xl font-black transition-all shadow-lg ${
-                                    canConfirmDiscard
-                                        ? 'bg-red-600 text-white hover:bg-red-500 hover:scale-105 active:scale-95 cursor-pointer animate-pulse'
-                                        : 'bg-slate-700 text-slate-500 cursor-not-allowed'
-                                }`}
-                            >
-                                <Check size={20} /> 确定
-                            </button>
-                        </div>
-                    )}
+                        )}
+                    </div>
                 </div>
 
                 {/* 修改点：利用 flex-1 让卡牌区自动撑满剩下的全部高度 */}
