@@ -28,8 +28,16 @@ export default function GameCard({ card, phase, isSelected, canConfirmDiscard, o
                     <Trash2 size={18} />
                 </div>
             )}
-            <div className={`font-black text-lg mb-2 ${card.color}`}>{card.name}</div>
-            <card.icon size={44} className={`mx-auto my-4 ${card.color}`} />
+
+            {/* 装备标识 */}
+            {(card.type === 'weapon' || card.type === 'armor') && (
+                <div className="absolute top-2 left-2 text-[10px] font-bold bg-black/10 px-1.5 py-0.5 rounded">
+                    {card.type === 'weapon' ? '武器' : '防具'}
+                </div>
+            )}
+
+            <div className={`font-black text-lg mt-1 mb-2 text-center ${card.color}`}>{card.name}</div>
+            <card.icon size={40} className={`mx-auto my-3 ${card.color}`} />
             <div className="text-[11px] text-stone-600 leading-snug font-medium bg-white/70 p-2 rounded-lg backdrop-blur-sm">{card.desc}</div>
         </div>
     );

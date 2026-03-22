@@ -1,9 +1,12 @@
-import { Sword, Shield, Heart, Zap, Eye, Magnet, Wind, FlaskConical, Swords, Apple, Search, Target, Flame } from 'lucide-react';
+import { Sword, Shield, Heart, Zap, Eye, Magnet, Wind, FlaskConical, Swords, Apple, Search, Target, Flame, Shirt } from 'lucide-react';
 
 export const CARD_TYPES = {
     ATTACK: 'ATTACK', DODGE: 'DODGE', HEAL: 'HEAL', STUN: 'STUN', SCAN: 'SCAN',
     STEAL: 'STEAL', DESTROY: 'DESTROY', WINE: 'WINE', ARROW: 'ARROW',
-    HEAL_BIG: 'HEAL_BIG', MIRROR: 'MIRROR', PIERCE: 'PIERCE', WHEELS: 'WHEELS'
+    HEAL_BIG: 'HEAL_BIG', MIRROR: 'MIRROR', PIERCE: 'PIERCE', WHEELS: 'WHEELS',
+    // 新增装备类型
+    EQUIP_WEAPON_SPEAR: 'EQUIP_WEAPON_SPEAR', EQUIP_WEAPON_STICK: 'EQUIP_WEAPON_STICK',
+    EQUIP_ARMOR_CLOTH: 'EQUIP_ARMOR_CLOTH', EQUIP_ARMOR_GOLD: 'EQUIP_ARMOR_GOLD'
 };
 
 export const CARDS_DB = {
@@ -20,13 +23,21 @@ export const CARDS_DB = {
     [CARD_TYPES.MIRROR]: { id: CARD_TYPES.MIRROR, name: '【照妖镜】', desc: '金光一闪，弃置敌人所有的【腾云】。', icon: Search, color: 'text-cyan-600', bg: 'bg-cyan-50', border: 'border-cyan-200' },
     [CARD_TYPES.PIERCE]: { id: CARD_TYPES.PIERCE, name: '【紧箍咒】', desc: '无视防御，直接造成1点流失伤害。', icon: Target, color: 'text-slate-600', bg: 'bg-slate-50', border: 'border-slate-200' },
     [CARD_TYPES.WHEELS]: { id: CARD_TYPES.WHEELS, name: '【风火轮】', desc: '解除本回合【降妖】次数限制，并摸1张牌。', icon: Flame, color: 'text-rose-600', bg: 'bg-rose-50', border: 'border-rose-200' },
+    // 装备卡牌数据
+    [CARD_TYPES.EQUIP_WEAPON_SPEAR]: { id: CARD_TYPES.EQUIP_WEAPON_SPEAR, type: 'weapon', name: '【三尖两刃刀】', desc: '武器：你的【降妖】伤害强制+1。', icon: Sword, color: 'text-rose-700', bg: 'bg-rose-50', border: 'border-rose-300' },
+    [CARD_TYPES.EQUIP_WEAPON_STICK]: { id: CARD_TYPES.EQUIP_WEAPON_STICK, type: 'weapon', name: '【混铁棍】', desc: '武器：你使用【降妖】无次数限制。', icon: Sword, color: 'text-stone-700', bg: 'bg-stone-50', border: 'border-stone-300' },
+    [CARD_TYPES.EQUIP_ARMOR_CLOTH]: { id: CARD_TYPES.EQUIP_ARMOR_CLOTH, type: 'armor', name: '【锦襕袈裟】', desc: '防具：免疫【漫天花雨】和【紧箍咒】的伤害。', icon: Shirt, color: 'text-amber-700', bg: 'bg-amber-50', border: 'border-amber-300' },
+    [CARD_TYPES.EQUIP_ARMOR_GOLD]: { id: CARD_TYPES.EQUIP_ARMOR_GOLD, type: 'armor', name: '【锁子黄金甲】', desc: '防具：受到【降妖】攻击时，受到的伤害强制-1。', icon: Shield, color: 'text-yellow-600', bg: 'bg-yellow-50', border: 'border-yellow-300' },
 };
 
 export const DECK_CONFIG = {
     [CARD_TYPES.ATTACK]: 30, [CARD_TYPES.DODGE]: 15, [CARD_TYPES.HEAL]: 8,
     [CARD_TYPES.STUN]: 3, [CARD_TYPES.SCAN]: 4, [CARD_TYPES.STEAL]: 5,
     [CARD_TYPES.DESTROY]: 5, [CARD_TYPES.WINE]: 4, [CARD_TYPES.ARROW]: 3,
-    [CARD_TYPES.HEAL_BIG]: 2, [CARD_TYPES.MIRROR]: 4, [CARD_TYPES.PIERCE]: 4, [CARD_TYPES.WHEELS]: 3
+    [CARD_TYPES.HEAL_BIG]: 2, [CARD_TYPES.MIRROR]: 4, [CARD_TYPES.PIERCE]: 4, [CARD_TYPES.WHEELS]: 3,
+    // 加入牌库：每种装备各2张
+    [CARD_TYPES.EQUIP_WEAPON_SPEAR]: 2, [CARD_TYPES.EQUIP_WEAPON_STICK]: 2,
+    [CARD_TYPES.EQUIP_ARMOR_CLOTH]: 2, [CARD_TYPES.EQUIP_ARMOR_GOLD]: 2
 };
 
 export const PLAYER_CHARACTERS = [
