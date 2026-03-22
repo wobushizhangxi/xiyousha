@@ -1,42 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Sword, Shield, Heart, Zap, Eye, ScrollText, X, Trash2, AlertCircle, RotateCcw, Check, Magnet, Wind, FlaskConical, Swords, User, Info } from 'lucide-react';
-
-// --- 游戏常量 ---
-const CARD_TYPES = {
-    ATTACK: 'ATTACK', DODGE: 'DODGE', HEAL: 'HEAL', STUN: 'STUN', SCAN: 'SCAN',
-    STEAL: 'STEAL', DESTROY: 'DESTROY', WINE: 'WINE', ARROW: 'ARROW'
-};
-
-const CARDS_DB = {
-    [CARD_TYPES.ATTACK]: { id: CARD_TYPES.ATTACK, name: '【降妖】', desc: '对目标造成1点伤害。每回合限1次。', icon: Sword, color: 'text-red-600', bg: 'bg-red-50', border: 'border-red-200' },
-    [CARD_TYPES.DODGE]: { id: CARD_TYPES.DODGE, name: '【腾云】', desc: '抵消一张【降妖】。', icon: Shield, color: 'text-green-600', bg: 'bg-green-50', border: 'border-green-200' },
-    [CARD_TYPES.HEAL]: { id: CARD_TYPES.HEAL, name: '【蟠桃】', desc: '恢复1点体力。', icon: Heart, color: 'text-pink-600', bg: 'bg-pink-50', border: 'border-pink-200' },
-    [CARD_TYPES.STUN]: { id: CARD_TYPES.STUN, name: '【定身咒】', desc: '使目标跳过下个出牌阶段。', icon: Zap, color: 'text-yellow-600', bg: 'bg-yellow-50', border: 'border-yellow-200' },
-    [CARD_TYPES.SCAN]: { id: CARD_TYPES.SCAN, name: '【火眼金睛】', desc: '立即摸取2张牌。', icon: Eye, color: 'text-blue-600', bg: 'bg-blue-50', border: 'border-blue-200' },
-    [CARD_TYPES.STEAL]: { id: CARD_TYPES.STEAL, name: '【探囊取物】', desc: '随机获得敌人1张手牌。', icon: Magnet, color: 'text-purple-600', bg: 'bg-purple-50', border: 'border-purple-200' },
-    [CARD_TYPES.DESTROY]: { id: CARD_TYPES.DESTROY, name: '【芭蕉扇】', desc: '随机弃置敌人1张手牌。', icon: Wind, color: 'text-orange-600', bg: 'bg-orange-50', border: 'border-orange-200' },
-    [CARD_TYPES.WINE]: { id: CARD_TYPES.WINE, name: '【九转金丹】', desc: '本回合下一张【降妖】伤害+1。', icon: FlaskConical, color: 'text-amber-600', bg: 'bg-amber-50', border: 'border-amber-200' },
-    [CARD_TYPES.ARROW]: { id: CARD_TYPES.ARROW, name: '【漫天花雨】', desc: '敌人需打出【腾云】，否则受到1点伤害。', icon: Swords, color: 'text-indigo-600', bg: 'bg-indigo-50', border: 'border-indigo-200' },
-};
-
-const DECK_CONFIG = {
-    [CARD_TYPES.ATTACK]: 30, [CARD_TYPES.DODGE]: 15, [CARD_TYPES.HEAL]: 8,
-    [CARD_TYPES.STUN]: 3, [CARD_TYPES.SCAN]: 4, [CARD_TYPES.STEAL]: 5,
-    [CARD_TYPES.DESTROY]: 5, [CARD_TYPES.WINE]: 4, [CARD_TYPES.ARROW]: 2
-};
-
-// --- 角色配置 ---
-const PLAYER_CHARACTERS = [
-    { id: 'wukong', name: '孙悟空', maxHp: 4, avatar: '🐵', skillName: '【金箍棒】', skillDesc: '神兵之威！你使用的【降妖】伤害默认 +1。' },
-    { id: 'bajie', name: '猪八戒', maxHp: 5, avatar: '🐷', skillName: '【皮糙肉厚】', skillDesc: '能吃能扛！你的手牌上限始终 +2。' },
-    { id: 'shaseng', name: '沙悟净', maxHp: 4, avatar: '🧔', skillName: '【化缘】', skillDesc: '任劳任怨！每次使用【蟠桃】恢复体力后，额外摸 1 张牌。' }
-];
-
-const ENEMY_CHARACTERS = [
-    { id: 'bull', name: '牛魔王', maxHp: 6, avatar: '🐂', skillName: '【蛮牛护体】', skillDesc: '每次受到伤害后，震落(随机弃置)玩家 1 张手牌。' },
-    { id: 'gold', name: '金角大王', maxHp: 4, avatar: '🧙', skillName: '【紫金葫芦】', skillDesc: '回合开始时，吸走(随机获得)玩家 1 张手牌。' },
-    { id: 'ironfan', name: '铁扇公主', maxHp: 4, avatar: '🪭', skillName: '【阴风阵阵】', skillDesc: '发动【降妖】时，附带吹飞(随机弃置)玩家 1 张手牌的效果。' }
-];
+import { Heart, ScrollText, AlertCircle, RotateCcw, Check, Info, Shield } from 'lucide-react';
+import { CARD_TYPES, CARDS_DB, DECK_CONFIG } from './config/gameConfig';
+import GameMenu from './components/GameMenu';
+import GameCard from './components/GameCard';
+import HistoryModal from './components/HistoryModal';
 
 const delay = (ms) => new Promise(res => setTimeout(res, ms));
 
@@ -45,27 +12,21 @@ export default function XiYouSha() {
     const logContainerRef = useRef(null);
     const deckRef = useRef([]);
 
-    // 状态引用 (用于突破闭包获取最新状态给 AI 逻辑用)
     const playerRef = useRef(null);
     const aiRef = useRef(null);
 
-    // 游戏核心状态
-    const [gameState, setGameState] = useState('MENU_PLAYER'); // MENU_PLAYER, MENU_ENEMY, PLAYING
-
-    // 角色实体
+    const [gameState, setGameState] = useState('MENU_PLAYER');
     const [selectedPlayerDef, setSelectedPlayerDef] = useState(null);
     const [selectedEnemyDef, setSelectedEnemyDef] = useState(null);
-
     const [player, setPlayer] = useState({ id: '', name: '', hp: 4, maxHp: 4, hand: [], wine: 0, isStunned: false });
     const [ai, setAi] = useState({ id: '', name: '', hp: 5, maxHp: 5, hand: [], wine: 0, isStunned: false });
+
     const [phase, setPhase] = useState('IDLE');
     const [hasAttacked, setHasAttacked] = useState(false);
 
-    // 玩家响应状态
+    // 玩家响应与动画状态
     const [promptState, setPromptState] = useState(null);
     const responseResolver = useRef(null);
-
-    // 新增动画状态：用于控制屏幕中央的特效
     const [animatingCard, setAnimatingCard] = useState(null);
     const [animatingText, setAnimatingText] = useState(null);
 
@@ -74,7 +35,6 @@ export default function XiYouSha() {
     const [allHistoryLogs, setAllHistoryLogs] = useState([]);
     const [showHistory, setShowHistory] = useState(false);
 
-    // 保持 Ref 与 State 同步
     useEffect(() => { playerRef.current = player; }, [player]);
     useEffect(() => { aiRef.current = ai; }, [ai]);
 
@@ -82,7 +42,6 @@ export default function XiYouSha() {
         if (logContainerRef.current) logContainerRef.current.scrollTop = logContainerRef.current.scrollHeight;
     }, [currentTurnLogs, phase]);
 
-    // 游戏结束判定
     const isGameOverLogged = useRef(false);
     useEffect(() => {
         if (gameState !== 'PLAYING') {
@@ -108,28 +67,23 @@ export default function XiYouSha() {
         setAllHistoryLogs(prev => [`[记录] ${msg}`, ...prev]);
     };
 
-    // 触发屏幕中央卡牌动画
     const triggerCardAnim = (card, source) => {
         setAnimatingCard({ card, source, id: Date.now() });
         setTimeout(() => setAnimatingCard(null), 1200);
     };
 
-    // 触发屏幕战斗反馈文字特效
     const triggerTextAnim = (text, type, source) => {
         setAnimatingText({ text, type, source, id: Date.now() });
         setTimeout(() => setAnimatingText(null), 1000);
     };
 
-    // 请求玩家响应（打出闪避）
     const requestPlayerDodge = (msg) => {
         return new Promise((resolve) => {
             const hasDodge = playerRef.current.hand.some(c => c.id === CARD_TYPES.DODGE);
             if (!hasDodge) {
-                // 如果没有【腾云】，为了游戏流畅度，直接跳过提示自动结算
                 resolve({ dodged: false });
                 return;
             }
-            // 切换到玩家响应阶段并弹出提示
             setPhase('PLAYER_RESPONSE');
             setPromptState({ message: msg });
             responseResolver.current = resolve;
@@ -151,7 +105,6 @@ export default function XiYouSha() {
         const newCards = deckRef.current.slice(0, count);
         deckRef.current = deckRef.current.slice(count);
 
-        // 触发摸牌动画字
         triggerTextAnim(`摸牌 +${count}`, 'buff', target);
 
         if (target === 'player') setPlayer(p => ({ ...p, hand: [...p.hand, ...newCards] }));
@@ -165,7 +118,6 @@ export default function XiYouSha() {
         deckRef.current = newDeck;
 
         setSelectedEnemyDef(enemyDef);
-
         setPlayer({ ...selectedPlayerDef, hp: selectedPlayerDef.maxHp, hand: pHand, wine: 0, isStunned: false });
         setAi({ ...enemyDef, hp: enemyDef.maxHp, hand: aHand, wine: 0, isStunned: false });
 
@@ -181,10 +133,9 @@ export default function XiYouSha() {
         setTimeout(startPlayerTurn, 1500);
     };
 
-    // 获取需弃置数量 (融合八戒被动)
     const getExcessCardsCount = () => {
         let limit = Math.max(0, player.hp);
-        if (player.id === 'bajie') limit += 2; // 八戒技能：手牌上限+2
+        if (player.id === 'bajie') limit += 2;
         return Math.max(0, player.hand.length - limit);
     };
 
@@ -197,7 +148,6 @@ export default function XiYouSha() {
 
         addLog("=== 你的回合开始 ===", true);
 
-        // 玩家定身结算
         if (playerRef.current.isStunned) {
             addLog(`🌀 你被定身咒禁锢，无法行动！`);
             setPlayer(p => ({ ...p, isStunned: false }));
@@ -207,13 +157,12 @@ export default function XiYouSha() {
 
         setPhase('PLAYER_PLAY');
         drawCards('player', 2);
-        addLog("你摸了 2 张牌");
     };
 
     const handlePlayCard = (card) => {
         if (phase === 'PLAYER_RESPONSE') {
             if (card.id === CARD_TYPES.DODGE) {
-                setPhase('AI_TURN'); // 切回 AI 阶段以继续它的回合
+                setPhase('AI_TURN');
                 setPromptState(null);
                 const idx = player.hand.findIndex(c => c.uid === card.uid);
                 if (responseResolver.current) responseResolver.current({ dodged: true, cardIdx: idx });
@@ -236,19 +185,19 @@ export default function XiYouSha() {
 
         if (phase !== 'PLAYER_PLAY') return;
 
-        // --- 出牌规则校验 ---
-        if (card.id === CARD_TYPES.ATTACK && hasAttacked) return addLog("⚠️ 本回合已出过【降妖】");
-        if (card.id === CARD_TYPES.HEAL && player.hp >= player.maxHp) return addLog("⚠️ 体力已满");
+        // 出牌规则限制
+        if (card.id === CARD_TYPES.ATTACK && hasAttacked) return addLog("⚠️ 本回合已出过【降妖】(可使用【风火轮】解除)");
+        if ((card.id === CARD_TYPES.HEAL || card.id === CARD_TYPES.HEAL_BIG) && player.hp >= player.maxHp) return addLog("⚠️ 体力已满");
         if (card.id === CARD_TYPES.DODGE) return addLog("⚠️ 【腾云】需在被攻击时被动使用");
         if (card.id === CARD_TYPES.WINE && player.wine > 0) return addLog("⚠️ 药效还在，不可叠加使用");
-        if ((card.id === CARD_TYPES.STEAL || card.id === CARD_TYPES.DESTROY) && ai.hand.length === 0) return addLog(`⚠️ 妖王已经没有手牌了`);
+        if ((card.id === CARD_TYPES.STEAL || card.id === CARD_TYPES.DESTROY || card.id === CARD_TYPES.MIRROR) && ai.hand.length === 0) return addLog(`⚠️ 妖王手里已经没牌了`);
 
+        // 扣除手牌
         const newHand = player.hand.filter(c => c.uid !== card.uid);
         setPlayer(p => ({ ...p, hand: newHand }));
-
-        // 触发玩家出牌中心动画
         triggerCardAnim(card, 'player');
 
+        // --- 卡牌效果结算 ---
         if (card.id === CARD_TYPES.ATTACK) {
             setHasAttacked(true);
             let dmg = 1 + player.wine;
@@ -285,10 +234,12 @@ export default function XiYouSha() {
                     }
                 });
             }, 800);
-        } else if (card.id === CARD_TYPES.HEAL) {
-            triggerTextAnim('+1', 'heal', 'player');
-            setPlayer(p => ({ ...p, hp: Math.min(p.maxHp, p.hp + 1) }));
-            addLog("🍎 你使用了【蟠桃】恢复了体力");
+        } else if (card.id === CARD_TYPES.HEAL || card.id === CARD_TYPES.HEAL_BIG) {
+            const healAmount = card.id === CARD_TYPES.HEAL_BIG ? 2 : 1;
+            triggerTextAnim(`+${healAmount}`, 'heal', 'player');
+            setPlayer(p => ({ ...p, hp: Math.min(p.maxHp, p.hp + healAmount) }));
+            addLog(`🍎 你使用了${card.name}，恢复了 ${healAmount} 点体力`);
+
             if (player.id === 'shaseng') {
                 setTimeout(() => {
                     triggerTextAnim('被动: 化缘!', 'buff', 'player');
@@ -307,6 +258,27 @@ export default function XiYouSha() {
             triggerTextAnim('蓄力！', 'buff', 'player');
             setPlayer(p => ({ ...p, wine: 1 }));
             addLog("💊 你饮下了【九转金丹】，下一张【降妖】伤害将 +1！");
+        } else if (card.id === CARD_TYPES.WHEELS) {
+            triggerTextAnim('疾风！', 'buff', 'player');
+            setHasAttacked(false); // 解除攻击限制
+            addLog("🔥 踏上【风火轮】！出招限制解除，并摸 1 张牌！");
+            drawCards('player', 1);
+        } else if (card.id === CARD_TYPES.PIERCE) {
+            triggerTextAnim('-1', 'damage', 'ai');
+            addLog(`📿 你念动【紧箍咒】，妖王头痛欲裂，无视防御失去 1 点体力！`);
+            setAi(a => ({ ...a, hp: Math.max(0, a.hp - 1) }));
+        } else if (card.id === CARD_TYPES.MIRROR) {
+            setAi(a => {
+                const dodgesRemoved = a.hand.filter(c => c.id === CARD_TYPES.DODGE).length;
+                if (dodgesRemoved > 0) {
+                    triggerTextAnim('破法！', 'buff', 'ai');
+                    addLog(`🔍 【照妖镜】金光一闪！妖王无处遁形，被强行销毁了 ${dodgesRemoved} 张【腾云】！`);
+                    return { ...a, hand: a.hand.filter(c => c.id !== CARD_TYPES.DODGE) };
+                } else {
+                    addLog(`🔍 【照妖镜】金光一闪，但妖王手里并没有【腾云】。`);
+                    return a;
+                }
+            });
         } else if (card.id === CARD_TYPES.STEAL) {
             if (ai.hand.length > 0) {
                 triggerTextAnim('窃取！', 'buff', 'player');
@@ -398,50 +370,49 @@ export default function XiYouSha() {
         }
 
         drawCards('ai', 2);
-        addLog(`${aiRef.current.name} 摸了两张牌`);
         await delay(1000);
 
-        // --- 核心出牌引擎 ---
         let aiHasAttacked = false;
 
         while (true) {
             if (playerRef.current.hp <= 0 || aiRef.current.hp <= 0) break;
-
             const currentAi = aiRef.current;
             let playIdx = -1;
 
             // 1. 优先回血
-            if (currentAi.hp < currentAi.maxHp) playIdx = currentAi.hand.findIndex(c => c.id === CARD_TYPES.HEAL);
-
-            // 2. 策略牌/过牌
+            if (currentAi.hp < currentAi.maxHp) {
+                playIdx = currentAi.hand.findIndex(c => c.id === CARD_TYPES.HEAL_BIG);
+                if (playIdx === -1) playIdx = currentAi.hand.findIndex(c => c.id === CARD_TYPES.HEAL);
+            }
+            // 2. 使用策略锦囊 (包括新道具)
             if (playIdx === -1) {
-                const autoPlays = [CARD_TYPES.SCAN, CARD_TYPES.DESTROY, CARD_TYPES.STEAL, CARD_TYPES.ARROW];
-                playIdx = currentAi.hand.findIndex(c => autoPlays.includes(c.id));
+                playIdx = currentAi.hand.findIndex(c => [
+                    CARD_TYPES.SCAN, CARD_TYPES.DESTROY, CARD_TYPES.STEAL,
+                    CARD_TYPES.ARROW, CARD_TYPES.MIRROR, CARD_TYPES.PIERCE, CARD_TYPES.WHEELS
+                ].includes(c.id));
             }
-            // 3. 贴定身咒 (如果玩家没被定身)
-            if (playIdx === -1 && !playerRef.current.isStunned) {
-                playIdx = currentAi.hand.findIndex(c => c.id === CARD_TYPES.STUN);
-            }
-            // 4. 喝酒 (如果手里有杀)
+            // 3. 贴定身
+            if (playIdx === -1 && !playerRef.current.isStunned) playIdx = currentAi.hand.findIndex(c => c.id === CARD_TYPES.STUN);
+            // 4. 喝酒
             if (playIdx === -1 && currentAi.wine === 0 && !aiHasAttacked) {
                 if (currentAi.hand.some(c => c.id === CARD_TYPES.ATTACK)) playIdx = currentAi.hand.findIndex(c => c.id === CARD_TYPES.WINE);
             }
             // 5. 攻击
-            if (playIdx === -1 && !aiHasAttacked) {
-                playIdx = currentAi.hand.findIndex(c => c.id === CARD_TYPES.ATTACK);
-            }
+            if (playIdx === -1 && !aiHasAttacked) playIdx = currentAi.hand.findIndex(c => c.id === CARD_TYPES.ATTACK);
 
             if (playIdx > -1) {
                 const card = currentAi.hand[playIdx];
-                await playCardAsAi(card, playIdx);
+                const result = await playCardAsAi(card, playIdx);
+
                 if (card.id === CARD_TYPES.ATTACK) aiHasAttacked = true;
-                await delay(1000); // 出牌间隔
+                if (result === 'RESET_ATTACK') aiHasAttacked = false; // 处理风火轮重置
+
+                await delay(1000);
             } else {
-                break; // 无牌可出
+                break;
             }
         }
 
-        // AI 弃牌阶段
         const finalAi = aiRef.current;
         const excess = finalAi.hand.length - finalAi.hp;
         if (excess > 0) {
@@ -455,12 +426,10 @@ export default function XiYouSha() {
         startPlayerTurn();
     };
 
-    // AI 出牌结算执行
     const playCardAsAi = async (card, idx) => {
         setAi(a => ({ ...a, hand: a.hand.filter((_, i) => i !== idx) }));
         const aiName = aiRef.current.name;
 
-        // 触发敌人出牌中心动画
         triggerCardAnim(card, 'ai');
 
         if (card.id === CARD_TYPES.ATTACK) {
@@ -495,10 +464,11 @@ export default function XiYouSha() {
                 addLog(`🩸 你被击中，失去 ${dmg} 点体力`);
                 setPlayer(p => ({ ...p, hp: Math.max(0, p.hp - dmg) }));
             }
-        } else if (card.id === CARD_TYPES.HEAL) {
-            triggerTextAnim('+1', 'heal', 'ai');
-            addLog(`🍎 ${aiName} 服下【蟠桃】，体力恢复`);
-            setAi(a => ({ ...a, hp: Math.min(a.maxHp, a.hp + 1) }));
+        } else if (card.id === CARD_TYPES.HEAL || card.id === CARD_TYPES.HEAL_BIG) {
+            const healAmount = card.id === CARD_TYPES.HEAL_BIG ? 2 : 1;
+            triggerTextAnim(`+${healAmount}`, 'heal', 'ai');
+            addLog(`🍎 ${aiName} 服下${card.name}，体力大量恢复`);
+            setAi(a => ({ ...a, hp: Math.min(a.maxHp, a.hp + healAmount) }));
         } else if (card.id === CARD_TYPES.SCAN) {
             addLog(`👁️ ${aiName} 施展【火眼金睛】，多摸了 2 张牌`);
             drawCards('ai', 2);
@@ -510,6 +480,27 @@ export default function XiYouSha() {
             triggerTextAnim('定身！', 'buff', 'player');
             addLog(`✨ ${aiName} 对你念动了【定身咒】！`);
             setPlayer(p => ({ ...p, isStunned: true }));
+        } else if (card.id === CARD_TYPES.WHEELS) {
+            triggerTextAnim('疾风！', 'buff', 'ai');
+            addLog(`🔥 ${aiName} 踏上【风火轮】，出招限制解除，并摸了 1 张牌！`);
+            drawCards('ai', 1);
+            return 'RESET_ATTACK'; // 告知主循环重置攻击状态
+        } else if (card.id === CARD_TYPES.PIERCE) {
+            triggerTextAnim('-1', 'damage', 'player');
+            addLog(`📿 ${aiName} 竟懂【紧箍咒】！你头痛欲裂，无视防御失去 1 点体力！`);
+            setPlayer(p => ({ ...p, hp: Math.max(0, p.hp - 1) }));
+        } else if (card.id === CARD_TYPES.MIRROR) {
+            setPlayer(p => {
+                const dodgesRemoved = p.hand.filter(c => c.id === CARD_TYPES.DODGE).length;
+                if (dodgesRemoved > 0) {
+                    triggerTextAnim('破法！', 'buff', 'player');
+                    addLog(`🔍 ${aiName} 祭出【照妖镜】！你被金光定住，被迫丢弃了所有【腾云】！`);
+                    return { ...p, hand: p.hand.filter(c => c.id !== CARD_TYPES.DODGE) };
+                } else {
+                    addLog(`🔍 ${aiName} 祭出【照妖镜】，但你手里本就没有【腾云】。`);
+                    return p;
+                }
+            });
         } else if (card.id === CARD_TYPES.ARROW) {
             addLog(`🏹 ${aiName} 洒出【漫天花雨】！范围攻击降临！`);
             await delay(800);
@@ -548,53 +539,12 @@ export default function XiYouSha() {
                 });
             }
         }
+        return null;
     };
 
-    // --- 渲染部分 ---
+    // 路由渲染控制
     if (gameState.startsWith('MENU')) {
-        const isSelectPlayer = gameState === 'MENU_PLAYER';
-        const title = isSelectPlayer ? '选择你的化身' : '选择挑战的妖王';
-        const options = isSelectPlayer ? PLAYER_CHARACTERS : ENEMY_CHARACTERS;
-
-        return (
-            <div className="flex flex-col items-center justify-center min-h-screen bg-stone-900 text-white p-4">
-                <h1 className="text-5xl font-black mb-4 text-yellow-500 tracking-widest">西游杀</h1>
-                <h2 className="text-2xl font-bold mb-10 text-stone-300">{title}</h2>
-
-                <div className="flex gap-6 max-w-5xl flex-wrap justify-center">
-                    {options.map(char => (
-                        <button
-                            key={char.id}
-                            onClick={() => {
-                                if (isSelectPlayer) {
-                                    setSelectedPlayerDef(char);
-                                    setGameState('MENU_ENEMY');
-                                } else {
-                                    initGame(char);
-                                }
-                            }}
-                            className="group flex flex-col items-center w-64 p-6 bg-stone-800 border-4 border-stone-700 rounded-3xl hover:border-yellow-500 hover:bg-stone-800/80 transition-all shadow-xl hover:-translate-y-2"
-                        >
-                            <div className="text-7xl mb-4 group-hover:scale-110 transition-transform">{char.avatar}</div>
-                            <div className="font-bold text-2xl mb-1">{char.name}</div>
-                            <div className="text-stone-400 text-sm mb-4 font-mono flex items-center gap-1">
-                                <Heart size={14} className="text-red-500" fill="currentColor"/> 体力上限: {char.maxHp}
-                            </div>
-                            <div className="w-full bg-stone-900/50 p-3 rounded-xl border border-stone-700 text-left">
-                                <div className="text-yellow-500 text-sm font-black mb-1">{char.skillName}</div>
-                                <div className="text-xs text-stone-300 leading-snug">{char.skillDesc}</div>
-                            </div>
-                        </button>
-                    ))}
-                </div>
-
-                {!isSelectPlayer && (
-                    <button onClick={() => setGameState('MENU_PLAYER')} className="mt-12 text-stone-400 hover:text-white underline">
-                        返回重选化身
-                    </button>
-                )}
-            </div>
-        );
+        return <GameMenu gameState={gameState} setGameState={setGameState} setSelectedPlayerDef={setSelectedPlayerDef} initGame={initGame} />;
     }
 
     const excessCards = getExcessCardsCount();
@@ -660,7 +610,7 @@ export default function XiYouSha() {
                 </div>
             )}
 
-            {/* 炫酷动画层：战斗文字 (伤害、闪避、治疗等) */}
+            {/* 炫酷动画层：战斗文字 */}
             {animatingText && (
                 <div className={`absolute z-50 pointer-events-none font-black text-6xl drop-shadow-[0_4px_4px_rgba(0,0,0,0.5)] italic tracking-widest
                     animate-in zoom-in-50 slide-in-from-bottom-10 fade-in duration-500 ease-out
@@ -796,21 +746,7 @@ export default function XiYouSha() {
 
             {/* 历史战绩弹窗 */}
             {showHistory && (
-                <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => setShowHistory(false)}>
-                    <div className="bg-stone-50 w-full max-w-lg rounded-3xl overflow-hidden flex flex-col max-h-[70vh] shadow-2xl" onClick={e => e.stopPropagation()}>
-                        <div className="p-5 border-b flex justify-between items-center bg-white">
-                            <h3 className="text-xl font-bold flex items-center gap-2"><ScrollText /> 观战笔记</h3>
-                            <button onClick={() => setShowHistory(false)} className="p-2 hover:bg-stone-100 rounded-full"><X /></button>
-                        </div>
-                        <div className="overflow-y-auto p-6 space-y-2 font-mono text-sm bg-stone-50">
-                            {allHistoryLogs.map((log, i) => (
-                                <div key={i} className={`pb-2 border-b border-stone-200/50 ${log.includes('===') ? 'text-black font-bold mt-4' : 'text-stone-600'}`}>
-                                    {log}
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-                </div>
+                <HistoryModal logs={allHistoryLogs} onClose={() => setShowHistory(false)} />
             )}
         </div>
     );
