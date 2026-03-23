@@ -2,7 +2,7 @@ import React from 'react';
 import { Trash2 } from 'lucide-react';
 import { CARD_TYPES } from '../config/gameConfig';
 
-export default function GameCard({ card, phase, isSelected, canConfirmDiscard, onClick }) {
+export default function GameCard({ card, phase, isSelected, canConfirmDiscard, isValidResponse, onClick }) {
     const shouldDim = phase === 'PLAYER_DISCARD' && !isSelected;
     const isDimmedExtra = shouldDim && canConfirmDiscard;
 
@@ -12,7 +12,7 @@ export default function GameCard({ card, phase, isSelected, canConfirmDiscard, o
             className={`relative flex-shrink-0 w-36 h-48 border-2 rounded-2xl p-4 transition-all duration-300 origin-bottom select-none
                 ${card.bg} ${card.border} group
                 ${phase === 'PLAYER_RESPONSE'
-                ? (card.id === CARD_TYPES.DODGE
+                ? (isValidResponse
                     ? 'ring-4 ring-blue-500 -translate-y-6 shadow-[0_20px_25px_-5px_rgba(59,130,246,0.5)] z-10 scale-105 cursor-pointer animate-pulse'
                     : 'opacity-40 grayscale-[80%] cursor-not-allowed hover:translate-y-0')
                 : phase === 'PLAYER_DISCARD'

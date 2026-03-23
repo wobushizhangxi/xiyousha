@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Heart, ScrollText, AlertCircle, RotateCcw, Check, Zap, Shield, X, Sword, Shirt } from 'lucide-react';
+import {
+    Heart, ScrollText, AlertCircle, RotateCcw, Check, Zap, Shield, X, Sword, Shirt, Search, Wind
+} from 'lucide-react';
 import { CARD_TYPES, CARDS_DB, DECK_CONFIG } from './config/gameConfig';
 import GameMenu from './components/GameMenu';
 import GameCard from './components/GameCard';
@@ -15,9 +17,8 @@ export default function XiYouSha() {
     const [gameState, setGameState] = useState('MENU_PLAYER');
     const [selectedPlayerDef, setSelectedPlayerDef] = useState(null);
 
-    // 状态管理 (增加了 buffs 字段用于动态状态跟踪)
     const [player, setPlayer] = useState({ id: '', def: null, hp: 4, maxHp: 4, hand: [], wine: 0, isStunned: false, equips: { weapon: null, armor: null }, buffs: {} });
-    const [enemies, setEnemies] = useState([]); // [{uid, def, hp, maxHp, hand, wine, isStunned, equips, buffs}]
+    const [enemies, setEnemies] = useState([]);
 
     const playerRef = useRef(player);
     const enemiesRef = useRef(enemies);
@@ -25,28 +26,25 @@ export default function XiYouSha() {
     useEffect(() => { playerRef.current = player; }, [player]);
     useEffect(() => { enemiesRef.current = enemies; }, [enemies]);
 
-    // 游戏阶段控制
     const [phase, setPhase] = useState('IDLE');
     const [hasAttacked, setHasAttacked] = useState(false);
     const [hasUsedActiveSkill, setHasUsedActiveSkill] = useState(false);
 
-    // 目标选择缓存
     const [pendingCard, setPendingCard] = useState(null);
     const [pendingSkill, setPendingSkill] = useState(null);
 
-    // UI 交互控制
     const [promptState, setPromptState] = useState(null);
     const responseResolver = useRef(null);
     const [animatingCard, setAnimatingCard] = useState(null);
     const [animatingText, setAnimatingText] = useState(null);
     const [discardSelection, setDiscardSelection] = useState([]);
 
-    // 日志与面板
     const [currentTurnLogs, setCurrentTurnLogs] = useState([]);
     const [allHistoryLogs, setAllHistoryLogs] = useState([]);
     const [showHistory, setShowHistory] = useState(false);
-    const [showSkillModal, setShowSkillModal] = useState(null); // {type: 'player'|'enemy', entity: {...}}
+    const [showSkillModal, setShowSkillModal] = useState(null);
     const [isPlayerInfoHidden, setIsPlayerInfoHidden] = useState(false);
+    const [showHandModal, setShowHandModal] = useState(null);
 
     const addLog = (msg, isNewRound = false) => {
         if (isNewRound) setCurrentTurnLogs([msg]);
@@ -82,15 +80,24 @@ export default function XiYouSha() {
             : { top: '10%', left: `${leftPercent}%`, transform: 'translate(-50%, 0)' };
     };
 
-    const requestPlayerDodge = (msg) => {
+    const requestPlayerResponse = (msg, options) => {
         return new Promise((resolve) => {
-            const hasDodge = playerRef.current.hand.some(c => c.id === CARD_TYPES.DODGE);
-            if (!hasDodge) {
-                resolve({ dodged: false });
+            const { anyCard, validIds } = options;
+            let hasValidCard = false;
+
+            if (anyCard) {
+                hasValidCard = playerRef.current.hand.length > 0;
+            } else if (validIds) {
+                hasValidCard = playerRef.current.hand.some(c => validIds.includes(c.id));
+            }
+
+            if (!hasValidCard) {
+                resolve({ provided: false });
                 return;
             }
+
             setPhase('PLAYER_RESPONSE');
-            setPromptState({ message: msg });
+            setPromptState({ message: msg, ...options });
             responseResolver.current = resolve;
         });
     };
@@ -131,14 +138,9 @@ export default function XiYouSha() {
 
         const initEnemies = enemiesDefs.map(def => ({
             uid: Math.random().toString(36).substr(2, 9),
-            def: def,
-            hp: def.maxHp,
-            maxHp: def.maxHp,
-            hand: newDeck.splice(0, 4),
-            wine: 0,
-            isStunned: false,
-            equips: { weapon: null, armor: null },
-            buffs: {}
+            def: def, hp: def.maxHp, maxHp: def.maxHp,
+            hand: newDeck.splice(0, 4), wine: 0, isStunned: false,
+            equips: { weapon: null, armor: null }, buffs: {}
         }));
 
         deckRef.current = newDeck;
@@ -155,6 +157,7 @@ export default function XiYouSha() {
         setHasAttacked(false);
         isGameStartedRef.current = true;
         isGameOverLogged.current = false;
+        processedDeadEnemies.current = new Set();
 
         addLog("=== 游戏开始 ===", true);
         addLog(`你化身为 ${selectedPlayerDef.name}，迎战 ${initEnemies.length} 位妖王！`);
@@ -164,25 +167,40 @@ export default function XiYouSha() {
     };
 
     const isGameOverLogged = useRef(false);
+    const processedDeadEnemies = useRef(new Set());
+
     useEffect(() => {
         if (gameState !== 'PLAYING') return;
 
-        const deadEnemies = enemies.filter(e => e.hp <= 0);
-        if (deadEnemies.length > 0) {
-            deadEnemies.forEach(e => addLog(`☠️ 妖王 ${e.def.name} 被击败了！`, true));
-            setEnemies(prev => prev.filter(e => e.hp > 0));
+        let anyDied = false;
+        enemies.forEach(e => {
+            if (e.hp <= 0 && !processedDeadEnemies.current.has(e.uid)) {
+                processedDeadEnemies.current.add(e.uid);
+                anyDied = true;
+                addLog(`☠️ 妖王 ${e.def.name} 被击败了！`, true);
+                setTimeout(() => {
+                    addLog(`✨ 【斩妖除魔】获得喘息！恢复1点体力并摸3张牌！`);
+                    setPlayer(p => ({...p, hp: Math.min(p.maxHp, p.hp + 1)}));
+                    drawCards('player', null, 3);
+                }, 800);
+            }
+        });
+
+        const aliveEnemies = enemies.filter(e => e.hp > 0);
+        if (anyDied) {
+            setTimeout(() => setEnemies(aliveEnemies), 2000);
         }
 
         if (player.hp <= 0 && !isGameOverLogged.current) {
             isGameOverLogged.current = true;
             addLog("☠️ 你被击败了！游戏结束！", true);
             setTimeout(() => { setGameState('MENU_PLAYER'); isGameStartedRef.current = false; }, 3500);
-        } else if (isGameStartedRef.current && enemies.length === 0 && enemiesRef.current.length === 0 && !isGameOverLogged.current) {
+        } else if (isGameStartedRef.current && aliveEnemies.length === 0 && !anyDied && !isGameOverLogged.current) {
             isGameOverLogged.current = true;
             addLog(`🎉 恭喜！你成功降伏了所有妖王！`, true);
             setTimeout(() => { setGameState('MENU_PLAYER'); isGameStartedRef.current = false; }, 3500);
         }
-    }, [player.hp, enemies, gameState]);
+    }, [enemies, player.hp, gameState]);
 
     const startPlayerTurn = () => {
         if (playerRef.current.hp <= 0 || enemiesRef.current.length === 0) return;
@@ -194,9 +212,11 @@ export default function XiYouSha() {
         setPendingSkill(null);
         setPlayer(p => ({ ...p, wine: 0, buffs: {} }));
 
-        addLog("=== 你的回合开始 ===", true);
+        const aliveCount = enemiesRef.current.filter(e=>e.hp > 0).length;
+        const dynamicDraw = 1 + aliveCount;
 
-        // 小白龙 动态被动
+        addLog(`=== 你的回合开始 (面对${aliveCount}名妖王) ===`, true);
+
         if (playerRef.current.id === 'xiaobailong') {
             if (playerRef.current.hp <= 2) {
                 triggerTextAnim('真龙!', 'buff', 'player');
@@ -223,7 +243,8 @@ export default function XiYouSha() {
         }
 
         setPhase('PLAYER_PLAY');
-        drawCards('player', null, 2);
+        addLog(`摸取了 ${dynamicDraw} 张牌`);
+        drawCards('player', null, dynamicDraw);
     };
 
     const handlePlayerActiveSkill = async () => {
@@ -233,7 +254,7 @@ export default function XiYouSha() {
 
         if (pid === 'wukong') {
             if (player.hp >= 3 && player.hand.length === 0) return addLog("⚠️ 体力充沛时，需要1张手牌来发动【火眼金睛】");
-            const aliveEnemies = enemiesRef.current.filter(e => e.hand.length > 0);
+            const aliveEnemies = enemiesRef.current.filter(e => e.hand.length > 0 && e.hp > 0);
             if (aliveEnemies.length > 0) {
                 if (player.hp >= 3) {
                     setPlayer(p => ({ ...p, hand: p.hand.filter((_, i) => i !== Math.floor(Math.random() * p.hand.length)) }));
@@ -295,7 +316,6 @@ export default function XiYouSha() {
             if (player.hp <= 2 && player.hand.length < 1) return addLog("⚠️ 需弃置 1 张手牌发动【紧箍咒语】");
 
             if (player.hp === 1) {
-                // 1HP 时全体 AOE
                 setPlayer(p => {
                     let newHand = [...p.hand];
                     newHand.splice(Math.floor(Math.random() * newHand.length), 1);
@@ -307,6 +327,7 @@ export default function XiYouSha() {
                 await delay(800);
                 let anyBoneHit = false;
                 setEnemies(prev => prev.map(e => {
+                    if (e.hp <= 0) return e;
                     if (e.equips.armor?.id === CARD_TYPES.EQUIP_ARMOR_CLOTH) {
                         addLog(`🛡️ ${e.def.name}的【锦襕袈裟】免疫了【紧箍咒语】！`);
                         return e;
@@ -332,15 +353,16 @@ export default function XiYouSha() {
     const processPlayerAttack = (baseDamage, sourceCardName, targetUid) => {
         let dmg = baseDamage + playerRef.current.wine;
         let isArmorPiercing = false;
+        let isUnblockable = false;
 
-        // 悟空 动态被动
         if (playerRef.current.id === 'wukong') {
             if (playerRef.current.hp === 1) {
-                dmg += 2; isArmorPiercing = true;
+                dmg += 1; isUnblockable = true; isArmorPiercing = true;
             } else if (playerRef.current.hp <= 3) {
                 dmg += 1;
             }
         }
+        if (playerRef.current.equips.weapon?.id === CARD_TYPES.EQUIP_WEAPON_STICK) isUnblockable = true;
 
         if (playerRef.current.equips.weapon?.id === CARD_TYPES.EQUIP_WEAPON_SPEAR) dmg += 1;
         if (playerRef.current.wine > 0) setPlayer(p => ({ ...p, wine: 0 }));
@@ -352,7 +374,7 @@ export default function XiYouSha() {
 
         setTimeout(() => {
             const ce = enemiesRef.current.find(e => e.uid === targetUid);
-            if (!ce) return;
+            if (!ce || ce.hp <= 0) return;
             let finalDmg = dmg;
 
             if (ce.def.id === 'ironfan') {
@@ -361,7 +383,7 @@ export default function XiYouSha() {
             }
             if (ce.equips.armor?.id === CARD_TYPES.EQUIP_ARMOR_GOLD) {
                 if (isArmorPiercing) {
-                    addLog(`🐵 孙悟空背水一战，无视了 ${ce.def.name} 的【锁子黄金甲】！`);
+                    addLog(`🐵 孙悟空无视了 ${ce.def.name} 的【锁子黄金甲】！`);
                 } else {
                     finalDmg = Math.max(0, finalDmg - 1);
                     addLog(`🛡️ ${ce.def.name}的【锁子黄金甲】强行抵消了 1 点伤害！`);
@@ -374,29 +396,33 @@ export default function XiYouSha() {
             }
 
             const actIdx = ce.hand.findIndex(c => c.id === CARD_TYPES.DODGE);
-            if (actIdx > -1) {
+
+            if (actIdx > -1 && !isUnblockable) {
                 triggerCardAnim(CARDS_DB[CARD_TYPES.DODGE], targetUid);
                 triggerTextAnim('闪避！', 'dodge', targetUid);
                 addLog(`🛡️ ${ce.def.name} 使用【腾云】躲开了`);
                 setEnemies(prev => prev.map(e => e.uid === targetUid ? { ...e, hand: e.hand.filter((_, i) => i !== actIdx) } : e));
             } else {
+                if (isUnblockable && actIdx > -1) {
+                    addLog(`🐵 此招迅猛异常，强行打破了【腾云】闪避！`);
+                }
+
                 triggerTextAnim(`-${finalDmg}`, 'damage', targetUid);
                 addLog(`💥 命中！${ce.def.name} 失去 ${finalDmg} 点体力`);
                 setEnemies(prev => prev.map(e => e.uid === targetUid ? { ...e, hp: Math.max(0, e.hp - finalDmg) } : e));
 
-                // 八戒吸血判定
                 if (playerRef.current.id === 'bajie' && playerRef.current.buffs?.lifesteal) {
                     setTimeout(() => {
                         triggerTextAnim('+1', 'heal', 'player');
-                        setPlayer(p => ({...p, hp: Math.min(p.maxHp, p.hp + 1), buffs: {...p.buffs, lifesteal: false}})); // 消耗吸血buff
+                        setPlayer(p => ({...p, hp: Math.min(p.maxHp, p.hp + 1), buffs: {...p.buffs, lifesteal: false}}));
                         addLog(`🐷 【背水一击】吸血生效，恢复 1 点体力！`);
                     }, 400);
                 }
 
-                if (ce.def.id === 'bull' && playerRef.current.hand.length > 0) {
+                if (ce.def.id === 'bull' && playerRef.current.hand.length > ce.hand.length) {
                     setTimeout(() => {
                         triggerTextAnim('震落!', 'buff', targetUid);
-                        addLog(`🐂 ${ce.def.name}【蛮牛护体】！你被震落了 1 张手牌！`);
+                        addLog(`🐂 ${ce.def.name}【蛮牛护体】！你的手牌多于它，被震落了 1 张手牌！`);
                         setPlayer(p => {
                             if (p.hand.length > 0) {
                                 const rIdx = Math.floor(Math.random() * p.hand.length);
@@ -406,6 +432,7 @@ export default function XiYouSha() {
                         });
                     }, 500);
                 }
+
                 if (ce.def.id === 'bone') {
                     setTimeout(() => {
                         triggerTextAnim('遗恨!', 'buff', targetUid);
@@ -419,14 +446,15 @@ export default function XiYouSha() {
 
     const handlePlayCard = (card) => {
         if (phase === 'PLAYER_RESPONSE') {
-            if (card.id === CARD_TYPES.DODGE) {
-                setPhase('ENEMY_TURN');
-                setPromptState(null);
-                const idx = player.hand.findIndex(c => c.uid === card.uid);
-                if (responseResolver.current) responseResolver.current({ dodged: true, cardIdx: idx });
-            } else {
-                addLog("⚠️ 现在只能打出【腾云】进行响应，或点击放弃！");
+            const isValid = promptState.anyCard || (promptState.validIds && promptState.validIds.includes(card.id));
+            if (!isValid) {
+                addLog("⚠️ 此牌无法用于当前的响应！");
+                return;
             }
+            setPhase('ENEMY_TURN');
+            setPromptState(null);
+            const idx = player.hand.findIndex(c => c.uid === card.uid);
+            if (responseResolver.current) responseResolver.current({ provided: true, cardIdx: idx, card: card });
             return;
         }
 
@@ -443,10 +471,10 @@ export default function XiYouSha() {
 
         if (phase !== 'PLAYER_PLAY') return;
 
-        const canAttackMultiple = player.equips.weapon?.id === CARD_TYPES.EQUIP_WEAPON_STICK;
-        if (card.id === CARD_TYPES.ATTACK && hasAttacked && !canAttackMultiple) return addLog("⚠️ 本回合已出过【降妖】(可使用【混铁棍】/【风火轮】解除)");
+        const canAttackMultiple = player.buffs?.wheelsActive;
+        if (card.id === CARD_TYPES.ATTACK && hasAttacked && !canAttackMultiple) return addLog("⚠️ 本回合已出过【降妖】(可使用【风火轮】解除)");
         if ((card.id === CARD_TYPES.HEAL || card.id === CARD_TYPES.HEAL_BIG) && player.hp >= player.maxHp) return addLog("⚠️ 体力已满");
-        if (card.id === CARD_TYPES.DODGE) return addLog("⚠️ 【腾云】需在被攻击时被动使用");
+        if (card.id === CARD_TYPES.DODGE) return addLog("⚠️ 【腾云】需在特定时刻响应打出");
         if (card.id === CARD_TYPES.WINE && player.wine > 0) return addLog("⚠️ 药效还在，不可叠加使用");
 
         const targetingCards = [CARD_TYPES.ATTACK, CARD_TYPES.STUN, CARD_TYPES.STEAL, CARD_TYPES.DESTROY, CARD_TYPES.PIERCE, CARD_TYPES.MIRROR];
@@ -481,7 +509,7 @@ export default function XiYouSha() {
             addLog(`🍎 你使用了${card.name}，恢复了 ${amount} 点体力`);
 
             if (player.id === 'shaseng') setTimeout(() => { addLog("🧔 【任劳任怨】生效！额外化得 1 张手牌！"); drawCards('player', null, 1); }, 400);
-            if (player.id === 'tangseng') setTimeout(() => { addLog("📿 【慈悲】生效！佛光普照，额外摸取 2 张手牌！"); drawCards('player', null, 2); }, 400);
+            if (player.id === 'tangseng') setTimeout(() => { addLog("📿 【慈悲】生效！佛光普照，额外摸取 1 张手牌！"); drawCards('player', null, 1); }, 400);
         } else if (card.id === CARD_TYPES.SCAN) {
             addLog("👁️ 火眼金睛！额外摸2张牌");
             drawCards('player', null, 2);
@@ -491,13 +519,14 @@ export default function XiYouSha() {
             addLog("💊 你饮下了【九转金丹】，下一张【降妖】伤害将 +1！");
         } else if (card.id === CARD_TYPES.WHEELS) {
             triggerTextAnim('疾风！', 'buff', 'player');
-            setHasAttacked(false);
+            setPlayer(p => ({ ...p, buffs: { ...p.buffs, wheelsActive: true } }));
             addLog("🔥 踏上【风火轮】！出招限制解除，并摸 1 张牌！");
             drawCards('player', null, 1);
         } else if (card.id === CARD_TYPES.ARROW) {
             addLog(`🏹 祭出【漫天花雨】！无差别范围攻击...`);
             await delay(800);
             for (let enemy of enemiesRef.current) {
+                if (enemy.hp <= 0) continue;
                 if (enemy.equips.armor?.id === CARD_TYPES.EQUIP_ARMOR_CLOTH) {
                     addLog(`🛡️ ${enemy.def.name}的【锦襕袈裟】散发佛光，防住了【漫天花雨】！`);
                     continue;
@@ -528,20 +557,35 @@ export default function XiYouSha() {
             if (te.equips.armor?.id === CARD_TYPES.EQUIP_ARMOR_CLOTH) {
                 addLog(`🛡️ ${te.def.name}的【锦襕袈裟】散发佛光，完美防御了【紧箍咒】！`);
             } else {
-                triggerTextAnim('-1', 'damage', targetUid);
-                addLog(`📿 你念动【紧箍咒】，${te.def.name}无视防御失去 1 点体力！`);
-                setEnemies(prev => prev.map(e => e.uid === targetUid ? { ...e, hp: Math.max(0, e.hp - 1) } : e));
-                if (te.def.id === 'bone') setTimeout(() => { drawCards('enemy', targetUid, 1); }, 500);
+                let blockIdx = te.hand.findIndex(c => c.id === CARD_TYPES.DODGE);
+                if (blockIdx === -1) blockIdx = te.hand.findIndex(c => c.id === CARD_TYPES.ATTACK);
+
+                if (blockIdx > -1) {
+                    const blockCard = te.hand[blockIdx];
+                    triggerCardAnim(blockCard, targetUid);
+                    addLog(`🛡️ ${te.def.name} 弃置了【${blockCard.name}】抵御了紧箍咒！`);
+                    setEnemies(prev => prev.map(e => e.uid === targetUid ? { ...e, hand: e.hand.filter((_, i) => i !== blockIdx) } : e));
+                } else {
+                    triggerTextAnim('-1', 'damage', targetUid);
+                    addLog(`📿 你念动【紧箍咒】，${te.def.name}无牌可挡，受到 1 点流失伤害！`);
+                    setEnemies(prev => prev.map(e => e.uid === targetUid ? { ...e, hp: Math.max(0, e.hp - 1) } : e));
+                    if (te.def.id === 'bone') setTimeout(() => { drawCards('enemy', targetUid, 1); }, 500);
+                }
             }
         } else if (card.id === CARD_TYPES.MIRROR) {
             const te = enemiesRef.current.find(e => e.uid === targetUid);
+            const handNames = te.hand.map(c => c.name).join(', ') || '空空如也';
+            addLog(`🔍 【照妖镜】展示了 ${te.def.name} 的所有手牌：${handNames}`);
+
+            setShowHandModal({ title: `${te.def.name} 的手牌 (被照妖镜看破)`, cards: te.hand });
+
             const dodgesRemoved = te.hand.filter(c => c.id === CARD_TYPES.DODGE).length;
             if (dodgesRemoved > 0) {
                 triggerTextAnim('破法！', 'buff', targetUid);
-                addLog(`🔍 【照妖镜】发威！强行销毁了 ${te.def.name} ${dodgesRemoved} 张【腾云】！`);
+                addLog(`✨ 强行销毁了其中的 ${dodgesRemoved} 张【腾云】！`);
                 setEnemies(prev => prev.map(e => e.uid === targetUid ? { ...e, hand: e.hand.filter(c => c.id !== CARD_TYPES.DODGE) } : e));
             } else {
-                addLog(`🔍 【照妖镜】金光一闪，但 ${te.def.name} 手里并没有【腾云】。`);
+                addLog(`⚠️ 但是并没有发现【腾云】。`);
             }
         } else if (card.id === CARD_TYPES.STEAL) {
             const te = enemiesRef.current.find(e => e.uid === targetUid);
@@ -572,7 +616,7 @@ export default function XiYouSha() {
         if (phase !== 'PLAYER_CHOOSE_TARGET') return;
 
         const targetEnemy = enemiesRef.current.find(e => e.uid === targetUid);
-        if (!targetEnemy) return;
+        if (!targetEnemy || targetEnemy.hp <= 0) return;
 
         setPhase('PLAYER_PLAY');
 
@@ -598,7 +642,7 @@ export default function XiYouSha() {
                 } else {
                     triggerTextAnim('-1', 'damage', targetUid);
                     setEnemies(prev => prev.map(e => e.uid === targetUid ? { ...e, hp: Math.max(0, e.hp - 1) } : e));
-                    addLog(`📿 唐僧弃置${discardCount}张手牌发动【紧箍咒语】，${targetEnemy.def.name}无视防御失去 1 点体力！`);
+                    addLog(`📿 唐僧弃置${discardCount}张手牌发动【紧箍咒语】，${targetEnemy.def.name}无视防御受到 1 点流失伤害！`);
                     if (targetEnemy.def.id === 'bone') setTimeout(() => { drawCards('enemy', targetUid, 1); }, 500);
                 }
             }
@@ -651,14 +695,14 @@ export default function XiYouSha() {
             i++;
         }
 
-        if (playerRef.current.hp > 0 && enemiesRef.current.length > 0) {
+        if (playerRef.current.hp > 0 && enemiesRef.current.filter(e => e.hp > 0).length > 0) {
             startPlayerTurn();
         }
     };
 
     const playSingleEnemyTurn = async (enemyUid) => {
         const getEnemy = () => enemiesRef.current.find(e => e.uid === enemyUid);
-        if (!getEnemy()) return;
+        if (!getEnemy() || getEnemy().hp <= 0) return;
 
         let aiHasUsedSkill = false;
         await delay(800);
@@ -676,7 +720,6 @@ export default function XiYouSha() {
             await delay(800);
         }
 
-        // 牛魔王 动态狂暴
         ce = getEnemy();
         if (ce.def.id === 'bull' && !ce.isStunned) {
             if (ce.hp === 1) {
@@ -711,7 +754,7 @@ export default function XiYouSha() {
         }
 
         ce = getEnemy();
-        if (!ce || playerRef.current.hp <= 0) return;
+        if (!ce || playerRef.current.hp <= 0 || ce.hp <= 0) return;
 
         if (ce.isStunned) {
             addLog(`🌀 ${ce.def.name}被定身，本回合无法行动！`);
@@ -740,7 +783,6 @@ export default function XiYouSha() {
                 continue;
             }
 
-            // 白骨精 动态吸魂
             if (ce.def.id === 'bone' && !aiHasUsedSkill) {
                 aiHasUsedSkill = true;
                 triggerTextAnim('吸魂!', 'buff', ce.uid);
@@ -769,7 +811,6 @@ export default function XiYouSha() {
                     if (ce.hand.length > 0 && playerRef.current.hand.length > 0) {
                         const pHand = playerRef.current.hand;
                         const rIdx = Math.floor(Math.random() * pHand.length);
-                        const dropped = pHand[rIdx];
                         addLog(`💀 ${ce.def.name}弃置1牌发动【吸魂】！随机弃置了你 1 张手牌`);
                         setEnemies(prev => prev.map(e => e.uid === ce.uid ? {...e, hand: e.hand.filter((_, i) => i !== Math.floor(Math.random() * e.hand.length))} : e));
                         setPlayer(p => ({...p, hand: p.hand.filter((_, i) => i !== rIdx)}));
@@ -779,7 +820,6 @@ export default function XiYouSha() {
                 continue;
             }
 
-            // 蜘蛛精 动态蛛丝 (非被动，这里是主动出牌判定)
             if (ce.def.id === 'spider' && !aiHasUsedSkill && ce.hand.length > 0 && playerRef.current.hand.length > 0) {
                 if (playerRef.current.equips.armor?.id === CARD_TYPES.EQUIP_ARMOR_CLOTH) {
                     addLog(`🕸️ ${ce.def.name}试图发动【夺命蛛丝】，但被你的【锦襕袈裟】抵挡！`);
@@ -808,17 +848,17 @@ export default function XiYouSha() {
             if (playIdx === -1) playIdx = ce.hand.findIndex(c => [CARD_TYPES.SCAN, CARD_TYPES.DESTROY, CARD_TYPES.STEAL, CARD_TYPES.ARROW, CARD_TYPES.MIRROR, CARD_TYPES.PIERCE, CARD_TYPES.WHEELS].includes(c.id));
             if (playIdx === -1 && !playerRef.current.isStunned) playIdx = ce.hand.findIndex(c => c.id === CARD_TYPES.STUN);
 
-            const canAttackMultiple = ce.equips.weapon?.id === CARD_TYPES.EQUIP_WEAPON_STICK;
-            if (playIdx === -1 && ce.wine === 0 && (!aiHasAttacked || canAttackMultiple)) {
+            const aiCanAttackMultiple = ce.buffs?.wheelsActive;
+
+            if (playIdx === -1 && ce.wine === 0 && (!aiHasAttacked || aiCanAttackMultiple)) {
                 if (ce.hand.some(c => c.id === CARD_TYPES.ATTACK)) playIdx = ce.hand.findIndex(c => c.id === CARD_TYPES.WINE);
             }
-            if (playIdx === -1 && (!aiHasAttacked || canAttackMultiple)) playIdx = ce.hand.findIndex(c => c.id === CARD_TYPES.ATTACK);
+            if (playIdx === -1 && (!aiHasAttacked || aiCanAttackMultiple)) playIdx = ce.hand.findIndex(c => c.id === CARD_TYPES.ATTACK);
 
             if (playIdx > -1) {
                 const card = ce.hand[playIdx];
-                const result = await playCardAsAi(card, playIdx, ce.uid);
+                await playCardAsAi(card, playIdx, ce.uid);
                 if (card.id === CARD_TYPES.ATTACK) aiHasAttacked = true;
-                if (result === 'RESET_ATTACK') aiHasAttacked = false;
                 await delay(1000);
             } else {
                 break;
@@ -830,21 +870,26 @@ export default function XiYouSha() {
             const excess = ce.hand.length - ce.hp;
             if (excess > 0) {
                 addLog(`${ce.def.name} 弃置了 ${excess} 张牌`);
-                setEnemies(prev => prev.map(e => e.uid === ce.uid ? { ...e, hand: e.hand.slice(0, Math.max(0, e.hp)) } : e));
+                setEnemies(prev => prev.map(e => e.uid === ce.uid ? { ...e, hand: e.hand.slice(0, Math.max(0, e.hp)), buffs: { ...e.buffs, wheelsActive: false } } : e));
             } else {
                 addLog(`${ce.def.name} 结束了回合`);
+                setEnemies(prev => prev.map(e => e.uid === ce.uid ? { ...e, buffs: { ...e.buffs, wheelsActive: false } } : e));
             }
 
-            // 蜘蛛精 动态盘丝阵
             if (ce.def.id === 'spider' && playerRef.current.hp > 0) {
-                if (ce.hp <= 2 && ce.hand.length >= 2) {
-                    triggerTextAnim('剧毒盘丝!', 'damage', 'player');
-                    addLog(`🕸️ 【剧毒盘丝】生效！${ce.def.name}将你【定身】并造成 1 点毒伤！`);
-                    setPlayer(p => ({...p, isStunned: true, hp: Math.max(0, p.hp - 1)}));
-                } else if (ce.hp >= 3 && ce.hand.length >= 4) {
-                    triggerTextAnim('盘丝!', 'buff', 'player');
-                    addLog(`🕸️ 【盘丝阵】生效！${ce.def.name}吐网将你【定身】！`);
-                    setPlayer(p => ({...p, isStunned: true}));
+                if (ce.hp <= 2) {
+                    addLog(`🕸️ ${ce.def.name} 触发【盘丝阵】！`);
+                    const response = await requestPlayerResponse(`【盘丝阵】触发！请弃置任意1张牌挣脱，否则被定身并受毒伤！`, { anyCard: true });
+
+                    if (response.provided) {
+                        triggerTextAnim('挣脱！', 'dodge', 'player');
+                        addLog(`💨 你弃置了【${response.card.name}】挣脱了蛛丝！`);
+                        setPlayer(p => ({ ...p, hand: p.hand.filter((_, i) => i !== response.cardIdx) }));
+                    } else {
+                        triggerTextAnim('剧毒盘丝!', 'damage', 'player');
+                        addLog(`🕸️ 挣脱失败！你被【定身】并受到 1 点毒伤！`);
+                        setPlayer(p => ({...p, isStunned: true, hp: Math.max(0, p.hp - 1)}));
+                    }
                 }
             }
         }
@@ -874,6 +919,9 @@ export default function XiYouSha() {
             if (ce.equips.weapon?.id === CARD_TYPES.EQUIP_WEAPON_SPEAR) dmg += 1;
             if (ce.wine > 0) setEnemies(prev => prev.map(e => e.uid === enemyUid ? { ...e, wine: 0 } : e));
 
+            let isUnblockable = false;
+            if (ce.equips.weapon?.id === CARD_TYPES.EQUIP_WEAPON_STICK) isUnblockable = true;
+
             addLog(`🔥 ${aiName} 祭出【降妖】袭来！(面板伤害${dmg})`);
             await delay(800);
 
@@ -894,30 +942,35 @@ export default function XiYouSha() {
                 return null;
             }
 
-            const response = await requestPlayerDodge(`${aiName} 对你发动【降妖】(伤害${dmg})，是否打出【腾云】？`);
-
-            if (response && response.dodged) {
-                const dIdx = response.cardIdx;
-                triggerCardAnim(CARDS_DB[CARD_TYPES.DODGE], 'player');
-                triggerTextAnim('闪避！', 'dodge', 'player');
-                addLog(`💨 你打出【腾云】，惊险躲开一击`);
-                setPlayer(p => ({ ...p, hand: p.hand.filter((_, i) => i !== dIdx) }));
-
-                // 牛魔王死斗追击
-                if (ce.def.id === 'bull' && ce.buffs?.bullRage) {
-                    setTimeout(() => {
-                        addLog(`🐂 【死斗】追击！牛魔王强行震落了你 2 张手牌！`);
-                        setPlayer(p => {
-                            let newH = [...p.hand];
-                            for(let j=0; j<2 && newH.length>0; j++) newH.splice(Math.floor(Math.random()*newH.length), 1);
-                            return {...p, hand: newH};
-                        });
-                    }, 500);
-                }
-            } else {
+            if (isUnblockable) {
+                addLog(`💥 ${aiName} 挥舞【混铁棍】，势大力沉，此击无法被闪避！`);
                 triggerTextAnim(`-${dmg}`, 'damage', 'player');
                 addLog(`🩸 你被击中，失去 ${dmg} 点体力`);
                 setPlayer(p => ({ ...p, hp: Math.max(0, p.hp - dmg) }));
+            } else {
+                const response = await requestPlayerResponse(`${aiName} 对你发动【降妖】(伤害${dmg})，是否打出【腾云】？`, { validIds: [CARD_TYPES.DODGE] });
+
+                if (response.provided) {
+                    triggerCardAnim(CARDS_DB[CARD_TYPES.DODGE], 'player');
+                    triggerTextAnim('闪避！', 'dodge', 'player');
+                    addLog(`💨 你打出【腾云】，惊险躲开一击`);
+                    setPlayer(p => ({ ...p, hand: p.hand.filter((_, i) => i !== response.cardIdx) }));
+
+                    if (ce.def.id === 'bull' && ce.buffs?.bullRage) {
+                        setTimeout(() => {
+                            addLog(`🐂 【死斗】追击！牛魔王强行震落了你 2 张手牌！`);
+                            setPlayer(p => {
+                                let newH = [...p.hand];
+                                for(let j=0; j<2 && newH.length>0; j++) newH.splice(Math.floor(Math.random()*newH.length), 1);
+                                return {...p, hand: newH};
+                            });
+                        }, 500);
+                    }
+                } else {
+                    triggerTextAnim(`-${dmg}`, 'damage', 'player');
+                    addLog(`🩸 你被击中，失去 ${dmg} 点体力`);
+                    setPlayer(p => ({ ...p, hp: Math.max(0, p.hp - dmg) }));
+                }
             }
         } else if (card.id === CARD_TYPES.HEAL || card.id === CARD_TYPES.HEAL_BIG) {
             const amount = card.id === CARD_TYPES.HEAL_BIG ? 2 : 1;
@@ -937,26 +990,38 @@ export default function XiYouSha() {
             setPlayer(p => ({ ...p, isStunned: true }));
         } else if (card.id === CARD_TYPES.WHEELS) {
             triggerTextAnim('疾风！', 'buff', enemyUid);
+            setEnemies(prev => prev.map(e => e.uid === enemyUid ? { ...e, buffs: { ...e.buffs, wheelsActive: true } } : e));
             addLog(`🔥 ${aiName} 踏上【风火轮】，出招限制解除！`);
             drawCards('enemy', enemyUid, 1);
-            return 'RESET_ATTACK';
+            return null;
         } else if (card.id === CARD_TYPES.PIERCE) {
             if (playerRef.current.equips.armor?.id === CARD_TYPES.EQUIP_ARMOR_CLOTH) {
                 addLog(`🛡️ 你的【锦襕袈裟】完美防御了【紧箍咒】！`);
             } else {
-                triggerTextAnim('-1', 'damage', 'player');
-                addLog(`📿 ${aiName} 念动【紧箍咒】！你失去 1 点体力！`);
-                setPlayer(p => ({ ...p, hp: Math.max(0, p.hp - 1) }));
+                const response = await requestPlayerResponse(`${aiName} 念动【紧箍咒】，请打出【腾云】或【降妖】抵御，否则流失1点体力！`, { validIds: [CARD_TYPES.DODGE, CARD_TYPES.ATTACK] });
+                if (response.provided) {
+                    triggerCardAnim(response.card, 'player');
+                    addLog(`💨 你弃置了【${response.card.name}】，成功抵御了紧箍咒！`);
+                    setPlayer(p => ({ ...p, hand: p.hand.filter((_, i) => i !== response.cardIdx) }));
+                } else {
+                    triggerTextAnim('-1', 'damage', 'player');
+                    addLog(`📿 避无可避，你受到 1 点流失伤害！`);
+                    setPlayer(p => ({ ...p, hp: Math.max(0, p.hp - 1) }));
+                }
             }
         } else if (card.id === CARD_TYPES.MIRROR) {
+            const pHandNames = playerRef.current.hand.map(c => c.name).join(', ') || '空空如也';
+            addLog(`🔍 ${aiName} 祭出【照妖镜】，你的手牌被看光了：${pHandNames}`);
+
+            setShowHandModal({ title: `你的手牌 (被 ${aiName} 的照妖镜看破)`, cards: playerRef.current.hand });
+
             setPlayer(p => {
                 const dodgesRemoved = p.hand.filter(c => c.id === CARD_TYPES.DODGE).length;
                 if (dodgesRemoved > 0) {
                     triggerTextAnim('破法！', 'buff', 'player');
-                    addLog(`🔍 ${aiName} 祭出【照妖镜】！你被迫丢弃了所有【腾云】！`);
+                    addLog(`✨ 你被迫丢弃了其中的 ${dodgesRemoved} 张【腾云】！`);
                     return { ...p, hand: p.hand.filter(c => c.id !== CARD_TYPES.DODGE) };
                 }
-                addLog(`🔍 ${aiName} 祭出【照妖镜】，但你手里本就没有【腾云】。`);
                 return p;
             });
         } else if (card.id === CARD_TYPES.ARROW) {
@@ -968,14 +1033,13 @@ export default function XiYouSha() {
                 return null;
             }
 
-            const response = await requestPlayerDodge(`${aiName} 洒出【漫天花雨】，是否打出【腾云】躲避？`);
+            const response = await requestPlayerResponse(`${aiName} 洒出【漫天花雨】，是否打出【腾云】躲避？`, { validIds: [CARD_TYPES.DODGE] });
 
-            if (response && response.dodged) {
-                const dIdx = response.cardIdx;
+            if (response.provided) {
                 triggerCardAnim(CARDS_DB[CARD_TYPES.DODGE], 'player');
                 triggerTextAnim('闪避！', 'dodge', 'player');
                 addLog(`💨 你打出【腾云】化险为夷`);
-                setPlayer(p => ({ ...p, hand: p.hand.filter((_, i) => i !== dIdx) }));
+                setPlayer(p => ({ ...p, hand: p.hand.filter((_, i) => i !== response.cardIdx) }));
             } else {
                 triggerTextAnim('-1', 'damage', 'player');
                 addLog(`🩸 避无可避，你失去 1 点体力`);
@@ -1011,45 +1075,45 @@ export default function XiYouSha() {
 
     return (
         <div className="relative flex flex-col h-screen bg-stone-200 overflow-hidden font-sans">
-
-            {/* 顶部妖王列表 */}
             <div className="relative z-20 bg-stone-800 text-white p-4 flex flex-col items-center shadow-xl border-b border-stone-700">
                 <div className="flex gap-4 w-full overflow-x-auto pb-2 scrollbar-hide justify-center px-4">
-                    {enemies.map((enemy) => (
-                        <div
-                            key={enemy.uid}
-                            className={`flex items-start gap-3 p-2.5 rounded-2xl border-4 transition-all min-w-[260px] max-w-[320px] shadow-lg
+                    {enemies.map((enemy) => {
+                        if (enemy.hp <= 0) return null;
+                        return (
+                            <div
+                                key={enemy.uid}
+                                className={`flex items-start gap-3 p-2.5 rounded-2xl border-4 transition-all min-w-[260px] max-w-[320px] shadow-lg
                                 ${phase === 'PLAYER_CHOOSE_TARGET'
-                                ? 'border-yellow-400 bg-stone-700/80 cursor-pointer hover:bg-stone-600 hover:scale-105 animate-pulse shadow-[0_0_20px_rgba(250,204,21,0.3)]'
-                                : 'border-stone-600 bg-stone-900/40'}`}
-                            onClick={() => handleEnemyClick(enemy.uid)}
-                        >
-                            <div className="relative text-5xl bg-stone-700 w-16 h-16 flex items-center justify-center rounded-xl border border-stone-500 flex-shrink-0 cursor-pointer hover:border-white transition-colors"
-                                 onClick={(e) => { e.stopPropagation(); setShowSkillModal({type: 'enemy', entity: enemy}); }}>
-                                {enemy.def.avatar}
-                                {enemy.isStunned && <div className="absolute -bottom-2 -right-2 bg-yellow-500 text-stone-900 font-bold text-[10px] px-1.5 rounded shadow">定身</div>}
-                                {enemy.wine > 0 && <div className="absolute -top-2 -right-2 bg-amber-500 text-white text-[10px] px-1.5 rounded-full shadow animate-bounce">伤害+</div>}
-                            </div>
-                            <div className="flex-1 min-w-0">
-                                <div className="font-bold text-base flex items-center justify-between mb-1">
-                                    <span className="truncate pr-1">{enemy.def.name}</span>
-                                    <span className="text-[10px] text-stone-300 font-mono border border-stone-600 bg-stone-800 px-1.5 py-0.5 rounded flex-shrink-0">牌: {enemy.hand.length}</span>
+                                    ? 'border-yellow-400 bg-stone-700/80 cursor-pointer hover:bg-stone-600 hover:scale-105 animate-pulse shadow-[0_0_20px_rgba(250,204,21,0.3)]'
+                                    : 'border-stone-600 bg-stone-900/40'}`}
+                                onClick={() => handleEnemyClick(enemy.uid)}
+                            >
+                                <div className="relative text-5xl bg-stone-700 w-16 h-16 flex items-center justify-center rounded-xl border border-stone-500 flex-shrink-0 cursor-pointer hover:border-white transition-colors"
+                                     onClick={(e) => { e.stopPropagation(); setShowSkillModal({type: 'enemy', entity: enemy}); }}>
+                                    {enemy.def.avatar}
+                                    {enemy.isStunned && <div className="absolute -bottom-2 -right-2 bg-yellow-500 text-stone-900 font-bold text-[10px] px-1.5 rounded shadow">定身</div>}
+                                    {enemy.wine > 0 && <div className="absolute -top-2 -right-2 bg-amber-500 text-white text-[10px] px-1.5 rounded-full shadow animate-bounce">伤害+</div>}
                                 </div>
-                                <div className="flex items-center gap-0.5 mb-2 flex-wrap">
-                                    {[...Array(Math.max(0, enemy.hp))].map((_, i) => <Heart key={i} size={14} fill="#ef4444" color="#ef4444" />)}
-                                </div>
-                                <div className="flex gap-1.5">
-                                    <div className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${enemy.equips.weapon ? 'bg-rose-900/50 text-rose-300 border-rose-700' : 'bg-stone-700/50 text-stone-400 border-stone-600'}`}>
-                                        🗡️ {enemy.equips.weapon ? enemy.equips.weapon.name : '无武器'}
+                                <div className="flex-1 min-w-0">
+                                    <div className="font-bold text-base flex items-center justify-between mb-1">
+                                        <span className="truncate pr-1">{enemy.def.name}</span>
+                                        <span className="text-[10px] text-stone-300 font-mono border border-stone-600 bg-stone-800 px-1.5 py-0.5 rounded flex-shrink-0">牌: {enemy.hand.length}</span>
                                     </div>
-                                    <div className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${enemy.equips.armor ? 'bg-amber-900/50 text-amber-300 border-amber-700' : 'bg-stone-700/50 text-stone-400 border-stone-600'}`}>
-                                        🛡️ {enemy.equips.armor ? enemy.equips.armor.name : '无防具'}
+                                    <div className="flex items-center gap-0.5 mb-2 flex-wrap">
+                                        {[...Array(Math.max(0, enemy.hp))].map((_, i) => <Heart key={i} size={14} fill="#ef4444" color="#ef4444" />)}
+                                    </div>
+                                    <div className="flex gap-1.5">
+                                        <div className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${enemy.equips.weapon ? 'bg-rose-900/50 text-rose-300 border-rose-700' : 'bg-stone-700/50 text-stone-400 border-stone-600'}`}>
+                                            🗡️ {enemy.equips.weapon ? enemy.equips.weapon.name : '无武器'}
+                                        </div>
+                                        <div className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${enemy.equips.armor ? 'bg-amber-900/50 text-amber-300 border-amber-700' : 'bg-stone-700/50 text-stone-400 border-stone-600'}`}>
+                                            🛡️ {enemy.equips.armor ? enemy.equips.armor.name : '无防具'}
+                                        </div>
                                     </div>
                                 </div>
                             </div>
-                        </div>
-                    ))}
-                    {enemies.length === 0 && <div className="text-stone-400 py-4 font-bold tracking-widest">妖王已全部被消灭</div>}
+                        )})}
+                    {enemies.filter(e=>e.hp>0).length === 0 && <div className="text-stone-400 py-4 font-bold tracking-widest">妖王已全部被消灭</div>}
                 </div>
 
                 <button onClick={() => setShowHistory(true)} className="absolute right-4 top-4 flex items-center gap-2 px-3 py-2 bg-stone-700 rounded-xl hover:bg-stone-600 border border-stone-500 transition-colors shadow-lg z-30">
@@ -1071,7 +1135,6 @@ export default function XiYouSha() {
                 </div>
             )}
 
-            {/* 日志区 */}
             <div ref={logContainerRef} className={`absolute inset-0 z-0 overflow-y-auto px-6 pt-40 pb-[42vh] scroll-smooth ${phase === 'PLAYER_CHOOSE_TARGET' ? 'opacity-30 blur-sm pointer-events-none' : ''} transition-all duration-300`}>
                 <div className="flex flex-col items-center space-y-4 min-h-full">
                     <div className="flex-1"></div>
@@ -1087,7 +1150,6 @@ export default function XiYouSha() {
                 </div>
             </div>
 
-            {/* 动画层 */}
             {animatingCard && (
                 <div className="absolute inset-0 z-[60] flex pointer-events-none">
                     <div key={animatingCard.id} className={`
@@ -1115,7 +1177,6 @@ export default function XiYouSha() {
                 </div>
             )}
 
-            {/* 底部玩家操作区 */}
             <div className={`absolute bottom-0 left-0 right-0 h-[40vh] flex flex-row z-40 p-4 backdrop-blur-md border-t transition-all duration-500 ${
                 phase === 'PLAYER_DISCARD' ? 'bg-slate-900/95 border-slate-700' : 'bg-white/95 border-stone-200 shadow-[0_-10px_40px_-15px_rgba(0,0,0,0.1)]'
             }`}>
@@ -1123,10 +1184,12 @@ export default function XiYouSha() {
                     <div ref={scrollRef} className="absolute inset-0 flex flex-nowrap gap-3 overflow-x-auto scrollbar-hide items-end pb-2 px-2">
                         {player.hand.map((card) => {
                             const isSelected = phase === 'PLAYER_DISCARD' && discardSelection.includes(card.uid);
+                            const isValidResponse = phase === 'PLAYER_RESPONSE' && promptState && (promptState.anyCard || (promptState.validIds && promptState.validIds.includes(card.id)));
                             return (
                                 <GameCard
                                     key={card.uid} card={card} phase={phase}
                                     isSelected={isSelected} canConfirmDiscard={canConfirmDiscard}
+                                    isValidResponse={isValidResponse}
                                     onClick={() => handlePlayCard(card)}
                                 />
                             );
@@ -1166,11 +1229,11 @@ export default function XiYouSha() {
                                     onClick={() => {
                                         setPhase('ENEMY_TURN');
                                         setPromptState(null);
-                                        if (responseResolver.current) responseResolver.current({ dodged: false });
+                                        if (responseResolver.current) responseResolver.current({ provided: false });
                                     }}
                                     className="bg-stone-700 text-stone-200 px-8 py-3 rounded-2xl font-black hover:bg-stone-600 active:scale-95 transition-all shadow-lg"
                                 >
-                                    放弃打出
+                                    放弃响应
                                 </button>
                             </div>
                         )}
@@ -1258,7 +1321,6 @@ export default function XiYouSha() {
                 </div>
             </div>
 
-            {/* 角色与装备详情综合弹窗 */}
             {showSkillModal && (
                 <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[80] flex items-center justify-center p-4" onClick={() => setShowSkillModal(null)}>
                     <div className="bg-stone-800 text-white w-full max-w-sm rounded-3xl overflow-hidden shadow-2xl border-4 border-stone-600 p-6 relative animate-in zoom-in-95 duration-200" onClick={e => e.stopPropagation()}>
@@ -1270,7 +1332,6 @@ export default function XiYouSha() {
                                 <Heart size={14} fill="currentColor"/> 当前体力: {showSkillModal.entity.hp} / {showSkillModal.entity.def.maxHp}
                             </div>
 
-                            {/* 技能信息 */}
                             <div className="w-full bg-stone-900/80 p-4 rounded-xl border border-stone-700 text-left mb-4">
                                 <div className="text-yellow-400 text-sm font-black mb-2 flex items-center gap-1.5"><Zap size={16}/> {showSkillModal.entity.def.activeName}</div>
                                 <div className="text-[13px] text-stone-300 leading-relaxed mb-5">{showSkillModal.entity.def.activeDesc}</div>
@@ -1279,7 +1340,6 @@ export default function XiYouSha() {
                                 <div className="text-[13px] text-stone-300 leading-relaxed">{showSkillModal.entity.def.passiveDesc}</div>
                             </div>
 
-                            {/* 装备信息 (如果有的话) */}
                             {(showSkillModal.entity.equips.weapon || showSkillModal.entity.equips.armor) && (
                                 <div className="w-full bg-stone-900/50 p-3 rounded-xl border border-stone-600 text-left mt-2">
                                     <div className="text-stone-400 text-xs font-bold mb-3 border-b border-stone-700 pb-1">当前装备：</div>
@@ -1310,6 +1370,38 @@ export default function XiYouSha() {
 
             {showHistory && (
                 <HistoryModal logs={allHistoryLogs} onClose={() => setShowHistory(false)} />
+            )}
+
+            {showHandModal && (
+                <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[90] flex items-center justify-center p-4" onClick={() => setShowHandModal(null)}>
+                    <div className="bg-stone-800 text-white w-full max-w-4xl rounded-3xl overflow-hidden shadow-2xl border-4 border-stone-600 flex flex-col max-h-[85vh] animate-in zoom-in-95 duration-200" onClick={e => e.stopPropagation()}>
+                        <div className="p-5 border-b border-stone-600 flex justify-between items-center bg-stone-900">
+                            <h3 className="text-2xl font-black flex items-center gap-2 text-cyan-400">
+                                <Search size={24} /> {showHandModal.title}
+                            </h3>
+                            <button onClick={() => setShowHandModal(null)} className="p-2 hover:bg-stone-700 rounded-full text-stone-400 hover:text-white transition-colors">
+                                <X size={24}/>
+                            </button>
+                        </div>
+                        <div className="p-8 overflow-y-auto bg-stone-800 flex-1 flex flex-wrap justify-center gap-6 items-center min-h-[300px]">
+                            {showHandModal.cards.length === 0 ? (
+                                <div className="text-stone-500 text-2xl font-bold tracking-widest flex flex-col items-center gap-4">
+                                    <Wind size={48} className="opacity-50" />
+                                    空空如也
+                                </div>
+                            ) : (
+                                showHandModal.cards.map((card, i) => (
+                                    <GameCard key={card.uid || i} card={card} phase="IDLE" isSelected={false} canConfirmDiscard={false} onClick={() => {}} />
+                                ))
+                            )}
+                        </div>
+                        <div className="p-4 border-t border-stone-600 bg-stone-900 flex justify-center">
+                            <button onClick={() => setShowHandModal(null)} className="px-10 py-3 bg-cyan-600 hover:bg-cyan-500 text-white font-bold rounded-xl shadow-lg transition-all active:scale-95 text-lg">
+                                确认
+                            </button>
+                        </div>
+                    </div>
+                </div>
             )}
         </div>
     );
