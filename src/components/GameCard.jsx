@@ -19,8 +19,8 @@ export default function GameCard({ card, phase, isSelected, canConfirmDiscard, o
                     ? (isSelected
                         ? 'ring-4 ring-red-500 -translate-y-6 shadow-[0_20px_25px_-5px_rgba(220,38,38,0.4)] z-10 scale-105 cursor-pointer'
                         : `cursor-pointer hover:-translate-y-2 hover:opacity-100 ${isDimmedExtra ? 'opacity-30 grayscale-[50%]' : 'opacity-70'}`)
-                    : (phase === 'IDLE' || phase === 'AI_TURN'
-                        ? 'opacity-90 grayscale-[20%]'
+                    : (phase === 'IDLE' || phase === 'ENEMY_TURN' || phase === 'PLAYER_CHOOSE_TARGET'
+                        ? 'opacity-80 grayscale-[20%] pointer-events-none'
                         : 'cursor-pointer shadow-md hover:-translate-y-6 hover:shadow-2xl hover:z-10')}`}
         >
             {isSelected && (
@@ -28,14 +28,11 @@ export default function GameCard({ card, phase, isSelected, canConfirmDiscard, o
                     <Trash2 size={18} />
                 </div>
             )}
-
-            {/* 装备标识 */}
             {(card.type === 'weapon' || card.type === 'armor') && (
                 <div className="absolute top-2 left-2 text-[10px] font-bold bg-black/10 px-1.5 py-0.5 rounded">
                     {card.type === 'weapon' ? '武器' : '防具'}
                 </div>
             )}
-
             <div className={`font-black text-lg mt-1 mb-2 text-center ${card.color}`}>{card.name}</div>
             <card.icon size={40} className={`mx-auto my-3 ${card.color}`} />
             <div className="text-[11px] text-stone-600 leading-snug font-medium bg-white/70 p-2 rounded-lg backdrop-blur-sm">{card.desc}</div>
