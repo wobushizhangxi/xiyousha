@@ -1,4 +1,4 @@
-import { Sword, Shield, Heart, Zap, Eye, Magnet, Wind, FlaskConical, Swords, Apple, Search, Target, Flame, Shirt } from 'lucide-react';
+import { Sword, Shield, Heart, Zap, Eye, Magnet, Wind, FlaskConical, Swords, Apple, Search, Target, Flame, Shirt, CloudRain, CloudLightning } from 'lucide-react';
 
 export const ELEMENTS = {
     METAL: { id: 'METAL', name: '金', color: 'text-yellow-700', bg: 'bg-yellow-200', border: 'border-yellow-400' },
@@ -14,7 +14,7 @@ export const WEATHERS = {
     SCORCHING: { id: 'SCORCHING', name: '🔥 烈日炎炎', desc: '火属性增强', effect: '【火】金丹增伤变+2，风火轮额外摸1牌。', element: 'FIRE' },
     STORM: { id: 'STORM', name: '🌪️ 狂风大作', desc: '风属性增强', effect: '【风】腾云成功后摸1牌，芭蕉扇弃2牌。', element: 'WIND' },
     RAIN: { id: 'RAIN', name: '🌧️ 瓢泼大雨', desc: '水/木属性增强', effect: '【木/水】恢复类牌额外摸1牌，探囊取物偷2牌。', element: 'WATER' },
-    THUNDERSTORM: { id: 'THUNDERSTORM', name: '⚡ 电闪雷鸣', desc: '雷属性增强', effect: '【雷】紧箍咒伤害变2点，定身咒附带1伤害。', element: 'THUNDER' },
+    THUNDERSTORM: { id: 'THUNDERSTORM', name: '⚡ 电闪雷鸣', desc: '雷属性增强', effect: '【雷】五雷轰顶伤害+1，定身咒附带1伤害。', element: 'THUNDER' },
     METALLIC: { id: 'METALLIC', name: '⚔️ 肃杀之气', desc: '金属性增强', effect: '【金】降妖、漫天花雨基础伤害+1。', element: 'METAL' }
 };
 
@@ -22,6 +22,7 @@ export const CARD_TYPES = {
     ATTACK: 'ATTACK', DODGE: 'DODGE', HEAL: 'HEAL', STUN: 'STUN', SCAN: 'SCAN',
     STEAL: 'STEAL', DESTROY: 'DESTROY', WINE: 'WINE', ARROW: 'ARROW',
     HEAL_BIG: 'HEAL_BIG', MIRROR: 'MIRROR', PIERCE: 'PIERCE', WHEELS: 'WHEELS',
+    WEATHER_CHANGE: 'WEATHER_CHANGE', THUNDER_STRIKE: 'THUNDER_STRIKE',
     EQUIP_WEAPON_SPEAR: 'EQUIP_WEAPON_SPEAR', EQUIP_WEAPON_STICK: 'EQUIP_WEAPON_STICK',
     EQUIP_ARMOR_CLOTH: 'EQUIP_ARMOR_CLOTH', EQUIP_ARMOR_GOLD: 'EQUIP_ARMOR_GOLD'
 };
@@ -40,8 +41,10 @@ export const CARDS_DB = {
     [CARD_TYPES.MIRROR]: { id: CARD_TYPES.MIRROR, element: 'METAL', name: '【照妖镜】', desc: '展示目标所有手牌，弃置其中所有的【腾云】。', icon: Search, color: 'text-cyan-600', bg: 'bg-cyan-50', border: 'border-cyan-200' },
     [CARD_TYPES.PIERCE]: { id: CARD_TYPES.PIERCE, element: 'THUNDER', name: '【紧箍咒】', desc: '需弃置1张【腾云】或【降妖】，否则受1点流失伤害。', icon: Target, color: 'text-slate-600', bg: 'bg-slate-50', border: 'border-slate-200' },
     [CARD_TYPES.WHEELS]: { id: CARD_TYPES.WHEELS, element: 'FIRE', name: '【风火轮】', desc: '解除本回合【降妖】次数限制，并摸1张牌。', icon: Flame, color: 'text-rose-600', bg: 'bg-rose-50', border: 'border-rose-200' },
+    [CARD_TYPES.WEATHER_CHANGE]: { id: CARD_TYPES.WEATHER_CHANGE, element: 'WATER', name: '【呼风唤雨】', desc: '神鬼莫测，随机扭转当前天气，并摸1张牌。', icon: CloudRain, color: 'text-sky-600', bg: 'bg-sky-50', border: 'border-sky-200' },
+    [CARD_TYPES.THUNDER_STRIKE]: { id: CARD_TYPES.THUNDER_STRIKE, element: 'THUNDER', name: '【五雷轰顶】', desc: '对单体造成2点法术伤害，无法被闪避。', icon: CloudLightning, color: 'text-violet-600', bg: 'bg-violet-50', border: 'border-violet-200' },
     [CARD_TYPES.EQUIP_WEAPON_SPEAR]: { id: CARD_TYPES.EQUIP_WEAPON_SPEAR, element: 'METAL', type: 'weapon', name: '【三尖两刃刀】', desc: '武器：你的【降妖】伤害强制+1。', icon: Sword, color: 'text-rose-700', bg: 'bg-rose-50', border: 'border-rose-300' },
-    [CARD_TYPES.EQUIP_WEAPON_STICK]: { id: CARD_TYPES.EQUIP_WEAPON_STICK, element: 'METAL', type: 'weapon', name: '【混铁棍】', desc: '武器：你的【降妖】不可被闪避(每回合限1次)。', icon: Sword, color: 'text-stone-700', bg: 'bg-stone-50', border: 'border-stone-300' },
+    [CARD_TYPES.EQUIP_WEAPON_STICK]: { id: CARD_TYPES.EQUIP_WEAPON_STICK, element: 'METAL', type: 'weapon', name: '【混铁棍】', desc: '武器：你的【降妖】不可被闪避。', icon: Sword, color: 'text-stone-700', bg: 'bg-stone-50', border: 'border-stone-300' },
     [CARD_TYPES.EQUIP_ARMOR_CLOTH]: { id: CARD_TYPES.EQUIP_ARMOR_CLOTH, element: 'WOOD', type: 'armor', name: '【锦襕袈裟】', desc: '防具：免疫【漫天花雨】和【紧箍咒】。', icon: Shirt, color: 'text-amber-700', bg: 'bg-amber-50', border: 'border-amber-300' },
     [CARD_TYPES.EQUIP_ARMOR_GOLD]: { id: CARD_TYPES.EQUIP_ARMOR_GOLD, element: 'METAL', type: 'armor', name: '【锁子黄金甲】', desc: '防具：受【降妖】伤害-1。', icon: Shield, color: 'text-yellow-600', bg: 'bg-yellow-50', border: 'border-yellow-300' },
 };
@@ -51,6 +54,7 @@ export const DECK_CONFIG = {
     [CARD_TYPES.STUN]: 2, [CARD_TYPES.SCAN]: 6, [CARD_TYPES.STEAL]: 4,
     [CARD_TYPES.DESTROY]: 4, [CARD_TYPES.WINE]: 4, [CARD_TYPES.ARROW]: 3,
     [CARD_TYPES.HEAL_BIG]: 2, [CARD_TYPES.MIRROR]: 3, [CARD_TYPES.PIERCE]: 3, [CARD_TYPES.WHEELS]: 2,
+    [CARD_TYPES.WEATHER_CHANGE]: 4, [CARD_TYPES.THUNDER_STRIKE]: 2,
     [CARD_TYPES.EQUIP_WEAPON_SPEAR]: 2, [CARD_TYPES.EQUIP_WEAPON_STICK]: 2,
     [CARD_TYPES.EQUIP_ARMOR_CLOTH]: 1, [CARD_TYPES.EQUIP_ARMOR_GOLD]: 2
 };
@@ -60,6 +64,11 @@ export const PLAYER_CHARACTERS = [
         id: 'wukong', name: '孙悟空', maxHp: 4, avatar: '🐵',
         passiveName: '【金箍棒】', passiveDesc: '被动：体力满无加成；体力≤3【降妖】伤害+1；体力=1伤害+1且无视防具、不可闪避！',
         activeName: '【火眼金睛】', activeDesc: '主动：每回合限1次。体力≥3弃1牌，体力≤2无消耗，随机弃置1名妖王的1张手牌。'
+    },
+    {
+        id: 'nezha', name: '哪吒', maxHp: 4, avatar: '🪷',
+        passiveName: '【莲花化身】', passiveDesc: '被动：无三魂七魄，百毒不侵。天生免疫一切流失伤害(紧箍咒)和毒伤。',
+        activeName: '【乾坤圈】', activeDesc: '主动：每回合限1次。弃1牌对单体造成1点伤害。若天气为【肃杀之气】伤害翻倍为2点！'
     },
     {
         id: 'bajie', name: '猪八戒', maxHp: 5, avatar: '🐷',
@@ -93,6 +102,16 @@ export const ENEMY_CHARACTERS = [
         id: 'bull', name: '牛魔王', maxHp: 6, avatar: '🐂',
         passiveName: '【蛮牛护体】', passiveDesc: '被动：受到伤害后，若攻击方手牌数多于你，随机震落(弃置)其 1 张牌。',
         activeName: '【狂暴】', activeDesc: '主动：体力2~3时，回合开始摸1牌且伤害+1。体力=1死斗模式：摸2牌、伤害+2，且玩家闪避时再震落其2张牌！'
+    },
+    {
+        id: 'yinjiao', name: '银角大王', maxHp: 4, avatar: '🗡️',
+        passiveName: '【七星宝剑】', passiveDesc: '被动：杀意凌然！你打出的所有【降妖】强制无视玩家防具，且不可被闪避。',
+        activeName: '【移山倒海】', activeDesc: '主动：体力≤2时，弃置1牌，强行将天气扭转为【肃杀之气】，并恢复1点体力。'
+    },
+    {
+        id: 'huangfeng', name: '黄风怪', maxHp: 4, avatar: '🌪️',
+        passiveName: '【三昧神风】', passiveDesc: '被动：每次成功打出【腾云】闪避后，强制随机改变当前天气，并摸1张牌。',
+        activeName: '【飞沙走石】', activeDesc: '主动：若当前天气为【狂风大作】，回合开始时直接卷走玩家1张手牌。'
     },
     {
         id: 'gold', name: '金角大王', maxHp: 5, avatar: '🧙',

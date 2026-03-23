@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
-    Heart, ScrollText, AlertCircle, RotateCcw, Check, Zap, Shield, X, Sword, Shirt, Search, Wind, CloudLightning
+    Heart, ScrollText, AlertCircle, RotateCcw, Check, Zap, Shield, X, Sword, Shirt, Search, Wind, CloudLightning, CloudRain
 } from 'lucide-react';
 import { CARD_TYPES, CARDS_DB, DECK_CONFIG, WEATHERS } from './config/gameConfig';
 import GameMenu from './components/GameMenu';
@@ -20,7 +20,6 @@ export default function XiYouSha() {
     const [player, setPlayer] = useState({ id: '', def: null, hp: 4, maxHp: 4, hand: [], wine: 0, isStunned: false, equips: { weapon: null, armor: null }, buffs: {} });
     const [enemies, setEnemies] = useState([]);
 
-    // 新增：全局天气状态
     const [weather, setWeather] = useState(WEATHERS.NORMAL);
 
     const playerRef = useRef(player);
@@ -208,9 +207,15 @@ export default function XiYouSha() {
         }
     }, [enemies, player.hp, gameState]);
 
-    // 每轮开始改变天气
-    const rollWeather = () => {
-        const weatherKeys = Object.keys(WEATHERS);
+    const rollWeather = (forceId = null) => {
+        if (forceId && WEATHERS[forceId]) {
+            const newWeather = WEATHERS[forceId];
+            setWeather(newWeather);
+            addLog(`🌁 天气被强制扭转：当前天气转为【${newWeather.name}】！`);
+            addLog(`=> ${newWeather.effect}`);
+            return;
+        }
+        const weatherKeys = Object.keys(WEATHERS).filter(k => k !== weatherRef.current.id);
         const randomKey = weatherKeys[Math.floor(Math.random() * weatherKeys.length)];
         const newWeather = WEATHERS[randomKey];
         setWeather(newWeather);
@@ -293,6 +298,12 @@ export default function XiYouSha() {
             } else {
                 addLog(`⚠️ 没有手中有牌的妖王，无法发动【火眼金睛】。`);
             }
+        } else if (pid === 'nezha') {
+            if (player.hand.length === 0) return addLog("⚠️ 没有手牌，无法发动【乾坤圈】");
+            setPendingSkill('nezha');
+            setPhase('PLAYER_CHOOSE_TARGET');
+            addLog(`🪷 准备发动【乾坤圈】，👆 请选择目标妖王`);
+            return;
         } else if (pid === 'bajie') {
             if (player.hp >= 4) {
                 triggerTextAnim('-1', 'damage', 'player');
@@ -377,7 +388,6 @@ export default function XiYouSha() {
         let isArmorPiercing = false;
         let isUnblockable = false;
 
-        // 天气：肃杀之气 (金属增强)
         if (weatherRef.current.id === 'METALLIC') {
             dmg += 1;
             addLog(`⚔️ 【天气加成】肃杀之气让金属性攻击伤害+1！`);
@@ -430,14 +440,21 @@ export default function XiYouSha() {
                 addLog(`🛡️ ${ce.def.name} 使用【腾云】躲开了`);
                 setEnemies(prev => prev.map(e => e.uid === targetUid ? { ...e, hand: e.hand.filter((_, i) => i !== actIdx) } : e));
 
-                // 天气：狂风大作 (风属性增强)
                 if (weatherRef.current.id === 'STORM') {
                     addLog(`🌪️ 【天气加成】狂风大作！${ce.def.name} 腾云成功，额外摸 1 张牌！`);
                     drawCards('enemy', targetUid, 1);
                 }
+
+                if (ce.def.id === 'huangfeng') {
+                    setTimeout(() => {
+                        addLog(`🌪️ 黄风怪躲避成功，【三昧神风】席卷战场！`);
+                        rollWeather();
+                        drawCards('enemy', targetUid, 1);
+                    }, 600);
+                }
             } else {
                 if (isUnblockable && actIdx > -1) {
-                    addLog(`🐵 此招迅猛异常，强行打破了【腾云】闪避！`);
+                    addLog(`💥 此招迅猛异常，强行打破了【腾云】闪避！`);
                 }
 
                 triggerTextAnim(`-${finalDmg}`, 'damage', targetUid);
@@ -510,7 +527,7 @@ export default function XiYouSha() {
         if (card.id === CARD_TYPES.DODGE) return addLog("⚠️ 【腾云】需在特定时刻响应打出");
         if (card.id === CARD_TYPES.WINE && player.wine > 0) return addLog("⚠️ 药效还在，不可叠加使用");
 
-        const targetingCards = [CARD_TYPES.ATTACK, CARD_TYPES.STUN, CARD_TYPES.STEAL, CARD_TYPES.DESTROY, CARD_TYPES.PIERCE, CARD_TYPES.MIRROR];
+        const targetingCards = [CARD_TYPES.ATTACK, CARD_TYPES.STUN, CARD_TYPES.STEAL, CARD_TYPES.DESTROY, CARD_TYPES.PIERCE, CARD_TYPES.MIRROR, CARD_TYPES.THUNDER_STRIKE];
         if (targetingCards.includes(card.id)) {
             setPendingCard(card);
             setPhase('PLAYER_CHOOSE_TARGET');
@@ -532,6 +549,21 @@ export default function XiYouSha() {
         } else if (card.type === 'armor') {
             setPlayer(p => ({ ...p, equips: { ...p.equips, armor: card } }));
             addLog(`🛡️ 你装备了防具 ${card.name}`);
+        } else if (card.id === CARD_TYPES.WEATHER_CHANGE) {
+            addLog(`🌊 你祭出【呼风唤雨】，天象开始变化...`);
+            rollWeather();
+            drawCards('player', null, 1);
+        } else if (card.id === CARD_TYPES.THUNDER_STRIKE) {
+            let dmg = 2;
+            if (weatherRef.current.id === 'THUNDERSTORM') {
+                dmg = 3;
+                addLog(`⚡ 【天气加成】电闪雷鸣，五雷轰顶威力暴增！`);
+            }
+            const te = enemiesRef.current.find(e => e.uid === targetUid);
+            triggerTextAnim(`-${dmg}`, 'damage', targetUid);
+            addLog(`⚡ 雷霆万钧！你对 ${te.def.name} 施展【五雷轰顶】，造成 ${dmg} 点法术伤害！`);
+            setEnemies(prev => prev.map(e => e.uid === targetUid ? { ...e, hp: Math.max(0, e.hp - dmg) } : e));
+            if (te.def.id === 'bone') setTimeout(() => { drawCards('enemy', targetUid, 1); }, 500);
         } else if (card.id === CARD_TYPES.ATTACK) {
             setHasAttacked(true);
             processPlayerAttack(1, '【降妖】', targetUid);
@@ -544,7 +576,6 @@ export default function XiYouSha() {
             if (player.id === 'shaseng') setTimeout(() => { addLog("🧔 【任劳任怨】生效！额外化得 1 张手牌！"); drawCards('player', null, 1); }, 400);
             if (player.id === 'tangseng') setTimeout(() => { addLog("📿 【慈悲】生效！佛光普照，额外摸取 1 张手牌！"); drawCards('player', null, 1); }, 400);
 
-            // 天气：瓢泼大雨 (水/木属性增强)
             if (weather.id === 'RAIN') {
                 setTimeout(() => { addLog("🌧️ 【天气加成】瓢泼大雨万物生发，额外摸 1 张牌！"); drawCards('player', null, 1); }, 600);
             }
@@ -576,8 +607,6 @@ export default function XiYouSha() {
                     addLog(`🛡️ ${enemy.def.name}的【锦襕袈裟】散发佛光，防住了【漫天花雨】！`);
                     continue;
                 }
-
-                // 处理满天花雨（也是攻击判定）
                 processPlayerAttack(1, '【漫天花雨】', enemy.uid, true);
                 await delay(800);
             }
@@ -587,7 +616,6 @@ export default function XiYouSha() {
             setEnemies(prev => prev.map(e => e.uid === targetUid ? { ...e, isStunned: true } : e));
             addLog(`✨ 对 ${te.def.name} 施展了定身咒`);
 
-            // 天气：电闪雷鸣 (雷属性增强)
             if (weather.id === 'THUNDERSTORM') {
                 setTimeout(() => {
                     triggerTextAnim('-1', 'damage', targetUid);
@@ -689,7 +717,19 @@ export default function XiYouSha() {
             executeCardPlayer(pendingCard, targetUid);
             setPendingCard(null);
         } else if (pendingSkill) {
-            if (pendingSkill === 'shaseng') {
+            if (pendingSkill === 'nezha') {
+                setPlayer(p => {
+                    let newHand = [...p.hand];
+                    newHand.splice(Math.floor(Math.random() * newHand.length), 1);
+                    return { ...p, hand: newHand };
+                });
+                let dmg = weatherRef.current.id === 'METALLIC' ? 2 : 1;
+                triggerTextAnim(`-${dmg}`, 'damage', targetUid);
+                setEnemies(prev => prev.map(e => e.uid === targetUid ? { ...e, hp: Math.max(0, e.hp - dmg) } : e));
+                if (dmg === 2) addLog(`🪷 哪吒弃1牌发动【乾坤圈】，肃杀之气加持，对 ${targetEnemy.def.name} 造成 2 点伤害！`);
+                else addLog(`🪷 哪吒弃1牌发动【乾坤圈】，对 ${targetEnemy.def.name} 造成 1 点伤害！`);
+                if (targetEnemy.def.id === 'bone') setTimeout(() => { drawCards('enemy', targetUid, 1); }, 500);
+            } else if (pendingSkill === 'shaseng') {
                 triggerTextAnim('-1', 'damage', 'player');
                 setPlayer(p => ({...p, hp: p.hp - 1}));
                 addLog(`🧔 消耗 1 体力发动【降妖宝杖】！`);
@@ -773,6 +813,26 @@ export default function XiYouSha() {
         await delay(800);
 
         let ce = getEnemy();
+
+        // 银角大王 技能：移山倒海
+        if (ce.def.id === 'yinjiao' && !aiHasUsedSkill && ce.hp <= 2 && ce.hand.length > 0 && weatherRef.current.id !== 'METALLIC') {
+            aiHasUsedSkill = true;
+            triggerTextAnim('移山倒海!', 'buff', ce.uid);
+            addLog(`🗡️ ${ce.def.name} 弃置1牌发动【移山倒海】！强制改变天气为【肃杀之气】，并恢复 1 点体力！`);
+            setEnemies(prev => prev.map(e => e.uid === ce.uid ? {...e, hp: Math.min(e.maxHp, e.hp + 1), hand: e.hand.filter((_, i) => i !== 0)} : e));
+            rollWeather('METALLIC');
+            await delay(800);
+        }
+
+        // 黄风怪 技能：飞沙走石
+        if (ce.def.id === 'huangfeng' && !aiHasUsedSkill && weatherRef.current.id === 'STORM' && playerRef.current.hand.length > 0) {
+            aiHasUsedSkill = true;
+            triggerTextAnim('飞沙走石!', 'damage', 'player');
+            addLog(`🌪️ ${ce.def.name} 借助狂风发动【飞沙走石】！强行卷走你 1 张牌！`);
+            setPlayer(p => ({ ...p, hand: p.hand.filter((_, i) => i !== Math.floor(Math.random() * p.hand.length)) }));
+            await delay(800);
+        }
+
         if (ce.def.id === 'gold' && !ce.isStunned && playerRef.current.hand.length > 0) {
             triggerTextAnim('紫金葫芦!', 'buff', ce.uid);
             setPlayer(p => {
@@ -888,6 +948,16 @@ export default function XiYouSha() {
             if (ce.def.id === 'spider' && !aiHasUsedSkill && ce.hand.length > 0 && playerRef.current.hand.length > 0) {
                 if (playerRef.current.equips.armor?.id === CARD_TYPES.EQUIP_ARMOR_CLOTH) {
                     addLog(`🕸️ ${ce.def.name}试图发动【夺命蛛丝】，但被你的【锦襕袈裟】抵挡！`);
+                } else if (playerRef.current.id === 'nezha') {
+                    aiHasUsedSkill = true;
+                    addLog(`🪷 ${ce.def.name}发动【夺命蛛丝】，哪吒【莲花化身】免疫了毒伤！`);
+                    setEnemies(prev => prev.map(e => {
+                        if (e.uid === ce.uid) return {...e, hand: e.hand.filter((_, i) => i !== Math.floor(Math.random() * e.hand.length))};
+                        return e;
+                    }));
+                    setPlayer(p => ({
+                        ...p, hand: p.hand.length > 0 ? p.hand.filter((_, i) => i !== Math.floor(Math.random() * p.hand.length)) : p.hand
+                    }));
                 } else {
                     aiHasUsedSkill = true;
                     triggerTextAnim('吐丝!', 'damage', 'player');
@@ -910,7 +980,7 @@ export default function XiYouSha() {
                 if (playIdx === -1) playIdx = ce.hand.findIndex(c => c.id === CARD_TYPES.HEAL);
             }
             if (playIdx === -1) playIdx = ce.hand.findIndex(c => c.type === 'weapon' || c.type === 'armor');
-            if (playIdx === -1) playIdx = ce.hand.findIndex(c => [CARD_TYPES.SCAN, CARD_TYPES.DESTROY, CARD_TYPES.STEAL, CARD_TYPES.ARROW, CARD_TYPES.MIRROR, CARD_TYPES.PIERCE, CARD_TYPES.WHEELS].includes(c.id));
+            if (playIdx === -1) playIdx = ce.hand.findIndex(c => [CARD_TYPES.SCAN, CARD_TYPES.DESTROY, CARD_TYPES.STEAL, CARD_TYPES.ARROW, CARD_TYPES.MIRROR, CARD_TYPES.PIERCE, CARD_TYPES.WHEELS, CARD_TYPES.WEATHER_CHANGE, CARD_TYPES.THUNDER_STRIKE].includes(c.id));
             if (playIdx === -1 && !playerRef.current.isStunned) playIdx = ce.hand.findIndex(c => c.id === CARD_TYPES.STUN);
 
             const aiCanAttackMultiple = ce.buffs?.wheelsActive;
@@ -944,16 +1014,19 @@ export default function XiYouSha() {
             if (ce.def.id === 'spider' && playerRef.current.hp > 0) {
                 if (ce.hp <= 2) {
                     addLog(`🕸️ ${ce.def.name} 触发【盘丝阵】！`);
-                    const response = await requestPlayerResponse(`【盘丝阵】触发！请弃置任意1张牌挣脱，否则被定身并受毒伤！`, { anyCard: true });
-
-                    if (response.provided) {
-                        triggerTextAnim('挣脱！', 'dodge', 'player');
-                        addLog(`💨 你弃置了【${response.card.name}】挣脱了蛛丝！`);
-                        setPlayer(p => ({ ...p, hand: p.hand.filter((_, i) => i !== response.cardIdx) }));
+                    if (playerRef.current.id === 'nezha') {
+                        addLog(`🪷 哪吒【莲花化身】百毒不侵，无视了盘丝阵！`);
                     } else {
-                        triggerTextAnim('剧毒盘丝!', 'damage', 'player');
-                        addLog(`🕸️ 挣脱失败！你被【定身】并受到 1 点毒伤！`);
-                        setPlayer(p => ({...p, isStunned: true, hp: Math.max(0, p.hp - 1)}));
+                        const response = await requestPlayerResponse(`【盘丝阵】触发！请弃置任意1张牌挣脱，否则被定身并受毒伤！`, { anyCard: true });
+                        if (response.provided) {
+                            triggerTextAnim('挣脱！', 'dodge', 'player');
+                            addLog(`💨 你弃置了【${response.card.name}】挣脱了蛛丝！`);
+                            setPlayer(p => ({ ...p, hand: p.hand.filter((_, i) => i !== response.cardIdx) }));
+                        } else {
+                            triggerTextAnim('剧毒盘丝!', 'damage', 'player');
+                            addLog(`🕸️ 挣脱失败！你被【定身】并受到 1 点毒伤！`);
+                            setPlayer(p => ({...p, isStunned: true, hp: Math.max(0, p.hp - 1)}));
+                        }
                     }
                 }
             }
@@ -978,6 +1051,23 @@ export default function XiYouSha() {
             return null;
         }
 
+        if (card.id === CARD_TYPES.WEATHER_CHANGE) {
+            addLog(`🌊 ${aiName} 祭出【呼风唤雨】，天象大变！`);
+            rollWeather();
+            drawCards('enemy', enemyUid, 1);
+            return null;
+        } else if (card.id === CARD_TYPES.THUNDER_STRIKE) {
+            let dmg = 2;
+            if (weatherRef.current.id === 'THUNDERSTORM') {
+                dmg = 3;
+                addLog(`⚡ 【天气加成】电闪雷鸣，五雷轰顶威力激增！`);
+            }
+            triggerTextAnim(`-${dmg}`, 'damage', 'player');
+            addLog(`⚡ 雷霆万钧！${aiName} 施展【五雷轰顶】，你受到 ${dmg} 点法术伤害！`);
+            setPlayer(p => ({ ...p, hp: Math.max(0, p.hp - dmg) }));
+            return null;
+        }
+
         if (card.id === CARD_TYPES.ATTACK) {
             let dmg = 1 + ce.wine;
             if (weatherRef.current.id === 'METALLIC') {
@@ -989,7 +1079,13 @@ export default function XiYouSha() {
             if (ce.wine > 0) setEnemies(prev => prev.map(e => e.uid === enemyUid ? { ...e, wine: 0 } : e));
 
             let isUnblockable = false;
+            let isArmorPiercing = false;
             if (ce.equips.weapon?.id === CARD_TYPES.EQUIP_WEAPON_STICK) isUnblockable = true;
+
+            if (ce.def.id === 'yinjiao') {
+                isUnblockable = true;
+                isArmorPiercing = true;
+            }
 
             addLog(`🔥 ${aiName} 祭出【降妖】袭来！(面板伤害${dmg})`);
             await delay(800);
@@ -1002,8 +1098,12 @@ export default function XiYouSha() {
             }
 
             if (playerRef.current.equips.armor?.id === CARD_TYPES.EQUIP_ARMOR_GOLD) {
-                dmg = Math.max(0, dmg - 1);
-                addLog(`🛡️ 你的【锁子黄金甲】强制抵消了 1 点伤害！`);
+                if (isArmorPiercing) {
+                    addLog(`🗡️ ${aiName} 的【七星宝剑】无视了你的【锁子黄金甲】！`);
+                } else {
+                    dmg = Math.max(0, dmg - 1);
+                    addLog(`🛡️ 你的【锁子黄金甲】强制抵消了 1 点伤害！`);
+                }
             }
 
             if (dmg <= 0) {
@@ -1012,7 +1112,8 @@ export default function XiYouSha() {
             }
 
             if (isUnblockable) {
-                addLog(`💥 ${aiName} 挥舞【混铁棍】，势大力沉，此击无法被闪避！`);
+                if (ce.def.id === 'yinjiao') addLog(`🗡️ ${aiName} 的攻击封锁了所有退路，此击无法被闪避！`);
+                else addLog(`💥 ${aiName} 挥舞【混铁棍】，势大力沉，此击无法被闪避！`);
                 triggerTextAnim(`-${dmg}`, 'damage', 'player');
                 addLog(`🩸 你被击中，失去 ${dmg} 点体力`);
                 setPlayer(p => ({ ...p, hp: Math.max(0, p.hp - dmg) }));
@@ -1089,6 +1190,8 @@ export default function XiYouSha() {
         } else if (card.id === CARD_TYPES.PIERCE) {
             if (playerRef.current.equips.armor?.id === CARD_TYPES.EQUIP_ARMOR_CLOTH) {
                 addLog(`🛡️ 你的【锦襕袈裟】完美防御了【紧箍咒】！`);
+            } else if (playerRef.current.id === 'nezha') {
+                addLog(`🪷 哪吒无三魂七魄，【莲花化身】完全免疫了紧箍咒的流失伤害！`);
             } else {
                 const response = await requestPlayerResponse(`${aiName} 念动【紧箍咒】，请打出【腾云】或【降妖】抵御，否则流失体力！`, { validIds: [CARD_TYPES.DODGE, CARD_TYPES.ATTACK] });
                 if (response.provided) {
@@ -1135,7 +1238,6 @@ export default function XiYouSha() {
                 addLog(`💨 你打出【腾云】化险为夷`);
                 setPlayer(p => ({ ...p, hand: p.hand.filter((_, i) => i !== response.cardIdx) }));
 
-                // 天气：狂风大作
                 if (weatherRef.current.id === 'STORM') {
                     addLog(`🌪️ 【天气加成】狂风大作！你腾云成功，额外摸 1 张牌！`);
                     drawCards('player', null, 1);
@@ -1203,7 +1305,7 @@ export default function XiYouSha() {
             <div className="absolute top-4 left-4 z-40 flex flex-col gap-2">
                 <div className={`px-4 py-2.5 rounded-xl shadow-lg border backdrop-blur-md transition-all duration-500 
                     ${weather.id !== 'NORMAL' ? 'bg-stone-900/90 border-yellow-500/50 text-white shadow-[0_0_15px_rgba(234,179,8,0.2)]' : 'bg-white/80 border-stone-300 text-stone-700'}`}>
-                    <div className="font-black text-lg">{weather.name}</div>
+                    <div className="font-black text-lg flex items-center gap-2">{weather.name}</div>
                     {weather.effect && <div className="text-xs mt-1 text-yellow-400 font-bold max-w-[200px] leading-tight">{weather.effect}</div>}
                 </div>
             </div>
