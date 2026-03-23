@@ -1,10 +1,12 @@
 import React from 'react';
 import { Trash2 } from 'lucide-react';
-import { CARD_TYPES } from '../config/gameConfig';
+import { CARD_TYPES, ELEMENTS } from '../config/gameConfig';
 
 export default function GameCard({ card, phase, isSelected, canConfirmDiscard, isValidResponse, onClick }) {
     const shouldDim = phase === 'PLAYER_DISCARD' && !isSelected;
     const isDimmedExtra = shouldDim && canConfirmDiscard;
+
+    const element = ELEMENTS[card.element];
 
     return (
         <div
@@ -28,11 +30,20 @@ export default function GameCard({ card, phase, isSelected, canConfirmDiscard, i
                     <Trash2 size={18} />
                 </div>
             )}
+
+            {/* 五行属性标签 */}
+            {element && (
+                <div className={`absolute top-2 left-2 text-[10px] font-black px-1.5 py-0.5 rounded shadow-sm border ${element.bg} ${element.color} ${element.border}`}>
+                    {element.name}
+                </div>
+            )}
+
             {(card.type === 'weapon' || card.type === 'armor') && (
-                <div className="absolute top-2 left-2 text-[10px] font-bold bg-black/10 px-1.5 py-0.5 rounded">
+                <div className={`absolute top-2 ${element ? 'left-8' : 'left-2'} text-[10px] font-bold bg-black/10 px-1.5 py-0.5 rounded`}>
                     {card.type === 'weapon' ? '武器' : '防具'}
                 </div>
             )}
+
             <div className={`font-black text-lg mt-1 mb-2 text-center ${card.color}`}>{card.name}</div>
             <card.icon size={40} className={`mx-auto my-3 ${card.color}`} />
             <div className="text-[11px] text-stone-600 leading-snug font-medium bg-white/70 p-2 rounded-lg backdrop-blur-sm">{card.desc}</div>
