@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Heart, ScrollText, AlertCircle, RotateCcw, Check, Zap, Shield, X } from 'lucide-react';
+import { Heart, ScrollText, AlertCircle, RotateCcw, Check, Zap, Shield, X, Sword, Shirt } from 'lucide-react';
 import { CARD_TYPES, CARDS_DB, DECK_CONFIG } from './config/gameConfig';
 import GameMenu from './components/GameMenu';
 import GameCard from './components/GameCard';
@@ -15,11 +15,10 @@ export default function XiYouSha() {
     const [gameState, setGameState] = useState('MENU_PLAYER');
     const [selectedPlayerDef, setSelectedPlayerDef] = useState(null);
 
-    // 状态管理
-    const [player, setPlayer] = useState({ id: '', def: null, hp: 4, maxHp: 4, hand: [], wine: 0, isStunned: false, equips: { weapon: null, armor: null } });
-    const [enemies, setEnemies] = useState([]); // [{uid, def, hp, maxHp, hand, wine, isStunned, equips}]
+    // 状态管理 (增加了 buffs 字段用于动态状态跟踪)
+    const [player, setPlayer] = useState({ id: '', def: null, hp: 4, maxHp: 4, hand: [], wine: 0, isStunned: false, equips: { weapon: null, armor: null }, buffs: {} });
+    const [enemies, setEnemies] = useState([]); // [{uid, def, hp, maxHp, hand, wine, isStunned, equips, buffs}]
 
-    // 核心引用，供异步循环使用
     const playerRef = useRef(player);
     const enemiesRef = useRef(enemies);
     const isGameStartedRef = useRef(false);
@@ -46,7 +45,7 @@ export default function XiYouSha() {
     const [currentTurnLogs, setCurrentTurnLogs] = useState([]);
     const [allHistoryLogs, setAllHistoryLogs] = useState([]);
     const [showHistory, setShowHistory] = useState(false);
-    const [showSkillModal, setShowSkillModal] = useState(null);
+    const [showSkillModal, setShowSkillModal] = useState(null); // {type: 'player'|'enemy', entity: {...}}
     const [isPlayerInfoHidden, setIsPlayerInfoHidden] = useState(false);
 
     const addLog = (msg, isNewRound = false) => {
@@ -138,14 +137,15 @@ export default function XiYouSha() {
             hand: newDeck.splice(0, 4),
             wine: 0,
             isStunned: false,
-            equips: { weapon: null, armor: null }
+            equips: { weapon: null, armor: null },
+            buffs: {}
         }));
 
         deckRef.current = newDeck;
         setPlayer({
             id: selectedPlayerDef.id, def: selectedPlayerDef,
             hp: selectedPlayerDef.maxHp, maxHp: selectedPlayerDef.maxHp,
-            hand: pHand, wine: 0, isStunned: false, equips: { weapon: null, armor: null }
+            hand: pHand, wine: 0, isStunned: false, equips: { weapon: null, armor: null }, buffs: {}
         });
         setEnemies(initEnemies);
 
@@ -192,14 +192,21 @@ export default function XiYouSha() {
         setDiscardSelection([]);
         setPendingCard(null);
         setPendingSkill(null);
-        setPlayer(p => ({ ...p, wine: 0 }));
+        setPlayer(p => ({ ...p, wine: 0, buffs: {} }));
 
         addLog("=== 你的回合开始 ===", true);
 
-        if (playerRef.current.id === 'xiaobailong' && playerRef.current.hp <= 2) {
-            triggerTextAnim('龙脉!', 'buff', 'player');
-            addLog(`🐉 【龙族血脉】触发！额外摸 1 张牌！`);
-            drawCards('player', null, 1);
+        // 小白龙 动态被动
+        if (playerRef.current.id === 'xiaobailong') {
+            if (playerRef.current.hp <= 2) {
+                triggerTextAnim('真龙!', 'buff', 'player');
+                addLog(`🐉 【龙族血脉】真龙觉醒！额外摸 2 张牌！`);
+                drawCards('player', null, 2);
+            } else if (playerRef.current.hp === 3) {
+                triggerTextAnim('龙脉!', 'buff', 'player');
+                addLog(`🐉 【龙族血脉】触发！额外摸 1 张牌！`);
+                drawCards('player', null, 1);
+            }
         }
 
         if (playerRef.current.id === 'wangmu' && playerRef.current.hp < playerRef.current.maxHp) {
@@ -219,28 +226,44 @@ export default function XiYouSha() {
         drawCards('player', null, 2);
     };
 
-    const handlePlayerActiveSkill = () => {
+    const handlePlayerActiveSkill = async () => {
         if (hasUsedActiveSkill || phase !== 'PLAYER_PLAY') return;
         const pid = player.id;
         let success = false;
 
         if (pid === 'wukong') {
+            if (player.hp >= 3 && player.hand.length === 0) return addLog("⚠️ 体力充沛时，需要1张手牌来发动【火眼金睛】");
             const aliveEnemies = enemiesRef.current.filter(e => e.hand.length > 0);
             if (aliveEnemies.length > 0) {
+                if (player.hp >= 3) {
+                    setPlayer(p => ({ ...p, hand: p.hand.filter((_, i) => i !== Math.floor(Math.random() * p.hand.length)) }));
+                    addLog(`🐵 弃置1张手牌发动【火眼金睛】！`);
+                } else {
+                    addLog(`🐵 体力衰竭，无消耗发动【火眼金睛】！`);
+                }
                 const target = aliveEnemies[Math.floor(Math.random() * aliveEnemies.length)];
                 const rIdx = Math.floor(Math.random() * target.hand.length);
                 setEnemies(prev => prev.map(e => e.uid === target.uid ? {...e, hand: e.hand.filter((_, i) => i !== rIdx)} : e));
                 triggerTextAnim('看破!', 'buff', target.uid);
-                addLog(`🐵 发动【火眼金睛】！洞察破绽，随机弃置了 ${target.def.name} 1 张手牌`);
+                addLog(`洞察破绽，随机弃置了 ${target.def.name} 1 张手牌`);
                 success = true;
             } else {
                 addLog(`⚠️ 没有手中有牌的妖王，无法发动【火眼金睛】。`);
             }
         } else if (pid === 'bajie') {
-            if (player.hp <= 1) return addLog("⚠️ 体力过低，无法发动【蓄力一击】");
-            triggerTextAnim('-1', 'damage', 'player');
-            setPlayer(p => ({...p, hp: p.hp - 1, wine: p.wine + 2}));
-            addLog(`🐷 消耗 1 体力发动【蓄力一击】！下一击伤害急剧提升！`);
+            if (player.hp >= 4) {
+                triggerTextAnim('-1', 'damage', 'player');
+                setPlayer(p => ({...p, hp: p.hp - 1, wine: p.wine + 1}));
+                addLog(`🐷 消耗 1 体力发动【蓄力一击】！下一击伤害+1！`);
+            } else if (player.hp >= 2) {
+                triggerTextAnim('-1', 'damage', 'player');
+                setPlayer(p => ({...p, hp: p.hp - 1, wine: p.wine + 2}));
+                addLog(`🐷 消耗 1 体力发动【蓄力一击】！下一击伤害+2！`);
+            } else {
+                triggerTextAnim('背水一击!', 'buff', 'player');
+                setPlayer(p => ({...p, wine: p.wine + 2, buffs: {...p.buffs, lifesteal: true}}));
+                addLog(`🐷 【背水一击】！无需消耗体力，下一击伤害+2且附带吸血！`);
+            }
             success = true;
         } else if (pid === 'xiaobailong') {
             if (player.hand.length === 0) return addLog("⚠️ 没有手牌，无法发动【乘风破浪】");
@@ -268,11 +291,39 @@ export default function XiYouSha() {
             addLog(`🧔 准备发动【降妖宝杖】，👆 请选择目标妖王`);
             return;
         } else if (pid === 'tangseng') {
-            if (player.hand.length === 0) return addLog("⚠️ 没有手牌，无法发动【紧箍咒语】");
-            setPendingSkill('tangseng');
-            setPhase('PLAYER_CHOOSE_TARGET');
-            addLog(`📿 准备发动【紧箍咒语】，👆 请选择要念咒的目标妖王`);
-            return;
+            if (player.hp >= 3 && player.hand.length < 2) return addLog("⚠️ 体力充沛时，需弃置 2 张手牌发动【紧箍咒语】");
+            if (player.hp <= 2 && player.hand.length < 1) return addLog("⚠️ 需弃置 1 张手牌发动【紧箍咒语】");
+
+            if (player.hp === 1) {
+                // 1HP 时全体 AOE
+                setPlayer(p => {
+                    let newHand = [...p.hand];
+                    newHand.splice(Math.floor(Math.random() * newHand.length), 1);
+                    return { ...p, hand: newHand };
+                });
+                addLog(`📿 唐僧残血爆发，佛光普照！弃置1牌对所有妖王念动【紧箍咒语】！`);
+                setHasUsedActiveSkill(true);
+
+                await delay(800);
+                let anyBoneHit = false;
+                setEnemies(prev => prev.map(e => {
+                    if (e.equips.armor?.id === CARD_TYPES.EQUIP_ARMOR_CLOTH) {
+                        addLog(`🛡️ ${e.def.name}的【锦襕袈裟】免疫了【紧箍咒语】！`);
+                        return e;
+                    }
+                    triggerTextAnim('-1', 'damage', e.uid);
+                    addLog(`💥 ${e.def.name}受到1点流失伤害！`);
+                    if (e.def.id === 'bone') anyBoneHit = true;
+                    return { ...e, hp: Math.max(0, e.hp - 1) };
+                }));
+                if (anyBoneHit) setTimeout(() => { drawCards('enemy', enemiesRef.current.find(e=>e.def.id==='bone').uid, 1); }, 500);
+                return;
+            } else {
+                setPendingSkill('tangseng');
+                setPhase('PLAYER_CHOOSE_TARGET');
+                addLog(`📿 准备发动【紧箍咒语】，👆 请选择要念咒的目标妖王`);
+                return;
+            }
         }
 
         if (success) setHasUsedActiveSkill(true);
@@ -280,7 +331,17 @@ export default function XiYouSha() {
 
     const processPlayerAttack = (baseDamage, sourceCardName, targetUid) => {
         let dmg = baseDamage + playerRef.current.wine;
-        if (playerRef.current.id === 'wukong') dmg += 1;
+        let isArmorPiercing = false;
+
+        // 悟空 动态被动
+        if (playerRef.current.id === 'wukong') {
+            if (playerRef.current.hp === 1) {
+                dmg += 2; isArmorPiercing = true;
+            } else if (playerRef.current.hp <= 3) {
+                dmg += 1;
+            }
+        }
+
         if (playerRef.current.equips.weapon?.id === CARD_TYPES.EQUIP_WEAPON_SPEAR) dmg += 1;
         if (playerRef.current.wine > 0) setPlayer(p => ({ ...p, wine: 0 }));
 
@@ -299,8 +360,12 @@ export default function XiYouSha() {
                 addLog(`🪭 ${ce.def.name}【护体罡风】生效，将伤害化解至 ${finalDmg} 点`);
             }
             if (ce.equips.armor?.id === CARD_TYPES.EQUIP_ARMOR_GOLD) {
-                finalDmg = Math.max(0, finalDmg - 1);
-                addLog(`🛡️ ${ce.def.name}的【锁子黄金甲】强行抵消了 1 点伤害！`);
+                if (isArmorPiercing) {
+                    addLog(`🐵 孙悟空背水一战，无视了 ${ce.def.name} 的【锁子黄金甲】！`);
+                } else {
+                    finalDmg = Math.max(0, finalDmg - 1);
+                    addLog(`🛡️ ${ce.def.name}的【锁子黄金甲】强行抵消了 1 点伤害！`);
+                }
             }
 
             if (finalDmg <= 0) {
@@ -318,6 +383,15 @@ export default function XiYouSha() {
                 triggerTextAnim(`-${finalDmg}`, 'damage', targetUid);
                 addLog(`💥 命中！${ce.def.name} 失去 ${finalDmg} 点体力`);
                 setEnemies(prev => prev.map(e => e.uid === targetUid ? { ...e, hp: Math.max(0, e.hp - finalDmg) } : e));
+
+                // 八戒吸血判定
+                if (playerRef.current.id === 'bajie' && playerRef.current.buffs?.lifesteal) {
+                    setTimeout(() => {
+                        triggerTextAnim('+1', 'heal', 'player');
+                        setPlayer(p => ({...p, hp: Math.min(p.maxHp, p.hp + 1), buffs: {...p.buffs, lifesteal: false}})); // 消耗吸血buff
+                        addLog(`🐷 【背水一击】吸血生效，恢复 1 点体力！`);
+                    }, 400);
+                }
 
                 if (ce.def.id === 'bull' && playerRef.current.hand.length > 0) {
                     setTimeout(() => {
@@ -512,16 +586,19 @@ export default function XiYouSha() {
                 addLog(`🧔 消耗 1 体力发动【降妖宝杖】！`);
                 processPlayerAttack(1, '【降妖宝杖】', targetUid);
             } else if (pendingSkill === 'tangseng') {
+                const discardCount = playerRef.current.hp >= 3 ? 2 : 1;
                 setPlayer(p => {
-                    const rIdx = Math.floor(Math.random() * p.hand.length);
-                    return { ...p, hand: p.hand.filter((_, i) => i !== rIdx) };
+                    let newHand = [...p.hand];
+                    for(let i=0; i<discardCount; i++) newHand.splice(Math.floor(Math.random()*newHand.length), 1);
+                    return { ...p, hand: newHand };
                 });
+
                 if (targetEnemy.equips.armor?.id === CARD_TYPES.EQUIP_ARMOR_CLOTH) {
                     addLog(`🛡️ ${targetEnemy.def.name}的【锦襕袈裟】免疫了【紧箍咒语】！`);
                 } else {
                     triggerTextAnim('-1', 'damage', targetUid);
                     setEnemies(prev => prev.map(e => e.uid === targetUid ? { ...e, hp: Math.max(0, e.hp - 1) } : e));
-                    addLog(`📿 唐僧弃置1张手牌发动【紧箍咒语】，${targetEnemy.def.name}无视防御失去 1 点体力！`);
+                    addLog(`📿 唐僧弃置${discardCount}张手牌发动【紧箍咒语】，${targetEnemy.def.name}无视防御失去 1 点体力！`);
                     if (targetEnemy.def.id === 'bone') setTimeout(() => { drawCards('enemy', targetUid, 1); }, 500);
                 }
             }
@@ -599,35 +676,24 @@ export default function XiYouSha() {
             await delay(800);
         }
 
+        // 牛魔王 动态狂暴
         ce = getEnemy();
-        if (ce.def.id === 'bull' && ce.hp <= 3 && !ce.isStunned) {
-            aiHasUsedSkill = true;
-            triggerTextAnim('狂暴!', 'buff', ce.uid);
-            addLog(`🐂 ${ce.def.name} 发动【狂暴】！额外摸1张牌，下击伤害+1！`);
-            drawCards('enemy', ce.uid, 1);
-            setEnemies(prev => prev.map(e => e.uid === ce.uid ? {...e, wine: e.wine + 1} : e));
-            await delay(800);
-        }
-
-        ce = getEnemy();
-        if (ce.def.id === 'spider' && !aiHasUsedSkill && ce.hand.length > 0 && !ce.isStunned && playerRef.current.hand.length > 0) {
-            if (playerRef.current.equips.armor?.id === CARD_TYPES.EQUIP_ARMOR_CLOTH) {
-                addLog(`🕸️ ${ce.def.name}试图发动【夺命蛛丝】，但被你的【锦襕袈裟】抵挡！`);
-            } else {
+        if (ce.def.id === 'bull' && !ce.isStunned) {
+            if (ce.hp === 1) {
                 aiHasUsedSkill = true;
-                triggerTextAnim('吐丝!', 'damage', 'player');
-                addLog(`🕸️ ${ce.def.name}发动【夺命蛛丝】！强制使你失去 1 张牌并受 1 点伤害！`);
-                setEnemies(prev => prev.map(e => {
-                    if (e.uid === ce.uid) return {...e, hand: e.hand.filter((_, i) => i !== Math.floor(Math.random() * e.hand.length))};
-                    return e;
-                }));
-                setPlayer(p => ({
-                    ...p,
-                    hand: p.hand.length > 0 ? p.hand.filter((_, i) => i !== Math.floor(Math.random() * p.hand.length)) : p.hand,
-                    hp: Math.max(0, p.hp - 1)
-                }));
+                triggerTextAnim('死斗!', 'buff', ce.uid);
+                addLog(`🐂 ${ce.def.name} 发动【死斗模式】！摸2张牌，下击伤害+2！`);
+                drawCards('enemy', ce.uid, 2);
+                setEnemies(prev => prev.map(e => e.uid === ce.uid ? {...e, wine: e.wine + 2, buffs: {...e.buffs, bullRage: true}} : e));
+                await delay(800);
+            } else if (ce.hp <= 3) {
+                aiHasUsedSkill = true;
+                triggerTextAnim('狂暴!', 'buff', ce.uid);
+                addLog(`🐂 ${ce.def.name} 发动【狂暴】！额外摸1张牌，下击伤害+1！`);
+                drawCards('enemy', ce.uid, 1);
+                setEnemies(prev => prev.map(e => e.uid === ce.uid ? {...e, wine: e.wine + 1} : e));
+                await delay(800);
             }
-            await delay(800);
         }
 
         ce = getEnemy();
@@ -674,24 +740,64 @@ export default function XiYouSha() {
                 continue;
             }
 
+            // 白骨精 动态吸魂
             if (ce.def.id === 'bone' && !aiHasUsedSkill) {
                 aiHasUsedSkill = true;
                 triggerTextAnim('吸魂!', 'buff', ce.uid);
-                if (playerRef.current.hand.length > 0) {
-                    const pHand = playerRef.current.hand;
-                    const rIdx = Math.floor(Math.random() * pHand.length);
-                    const dropped = pHand[rIdx];
-                    addLog(`💀 ${ce.def.name}发动【吸魂】！随机弃置了你 1 张手牌`);
-                    setPlayer(p => ({...p, hand: p.hand.filter((_, i) => i !== rIdx)}));
-                    if (dropped.id === CARD_TYPES.ATTACK || dropped.id === CARD_TYPES.DODGE) {
-                        addLog(`🩸 吸取精血，白骨精恢复 1 点体力！`);
-                        setEnemies(prev => prev.map(e => e.uid === ce.uid ? {...e, hp: Math.min(e.maxHp, e.hp + 1)} : e));
+                if (ce.hp === 1) {
+                    if (playerRef.current.hand.length > 0) {
+                        const pHand = playerRef.current.hand;
+                        const rIdx = Math.floor(Math.random() * pHand.length);
+                        const stolen = pHand[rIdx];
+                        addLog(`💀 【九阴白骨】！${ce.def.name}强行夺走你1张牌并恢复1点体力！`);
+                        setPlayer(p => ({...p, hand: p.hand.filter((_, i) => i !== rIdx)}));
+                        setEnemies(prev => prev.map(e => e.uid === ce.uid ? {...e, hp: Math.min(e.maxHp, e.hp + 1), hand: [...e.hand, stolen]} : e));
+                    }
+                } else if (ce.hp === 2) {
+                    if (playerRef.current.hand.length > 0) {
+                        const pHand = playerRef.current.hand;
+                        const rIdx = Math.floor(Math.random() * pHand.length);
+                        const dropped = pHand[rIdx];
+                        addLog(`💀 ${ce.def.name}无消耗发动【吸魂】！随机弃置了你 1 张手牌`);
+                        setPlayer(p => ({...p, hand: p.hand.filter((_, i) => i !== rIdx)}));
+                        if (dropped.id === CARD_TYPES.ATTACK || dropped.id === CARD_TYPES.DODGE) {
+                            addLog(`🩸 吸取精血，白骨精恢复 1 点体力！`);
+                            setEnemies(prev => prev.map(e => e.uid === ce.uid ? {...e, hp: Math.min(e.maxHp, e.hp + 1)} : e));
+                        }
                     }
                 } else {
-                    addLog(`💀 ${ce.def.name}发动【吸魂】，但你无牌可弃。`);
+                    if (ce.hand.length > 0 && playerRef.current.hand.length > 0) {
+                        const pHand = playerRef.current.hand;
+                        const rIdx = Math.floor(Math.random() * pHand.length);
+                        const dropped = pHand[rIdx];
+                        addLog(`💀 ${ce.def.name}弃置1牌发动【吸魂】！随机弃置了你 1 张手牌`);
+                        setEnemies(prev => prev.map(e => e.uid === ce.uid ? {...e, hand: e.hand.filter((_, i) => i !== Math.floor(Math.random() * e.hand.length))} : e));
+                        setPlayer(p => ({...p, hand: p.hand.filter((_, i) => i !== rIdx)}));
+                    }
                 }
                 await delay(800);
                 continue;
+            }
+
+            // 蜘蛛精 动态蛛丝 (非被动，这里是主动出牌判定)
+            if (ce.def.id === 'spider' && !aiHasUsedSkill && ce.hand.length > 0 && playerRef.current.hand.length > 0) {
+                if (playerRef.current.equips.armor?.id === CARD_TYPES.EQUIP_ARMOR_CLOTH) {
+                    addLog(`🕸️ ${ce.def.name}试图发动【夺命蛛丝】，但被你的【锦襕袈裟】抵挡！`);
+                } else {
+                    aiHasUsedSkill = true;
+                    triggerTextAnim('吐丝!', 'damage', 'player');
+                    addLog(`🕸️ ${ce.def.name}发动【夺命蛛丝】！强制使你失去 1 张牌并受 1 点伤害！`);
+                    setEnemies(prev => prev.map(e => {
+                        if (e.uid === ce.uid) return {...e, hand: e.hand.filter((_, i) => i !== Math.floor(Math.random() * e.hand.length))};
+                        return e;
+                    }));
+                    setPlayer(p => ({
+                        ...p,
+                        hand: p.hand.length > 0 ? p.hand.filter((_, i) => i !== Math.floor(Math.random() * p.hand.length)) : p.hand,
+                        hp: Math.max(0, p.hp - 1)
+                    }));
+                }
+                await delay(800);
             }
 
             if (ce.hp < ce.maxHp) {
@@ -729,10 +835,17 @@ export default function XiYouSha() {
                 addLog(`${ce.def.name} 结束了回合`);
             }
 
-            if (ce.def.id === 'spider' && ce.hand.length >= 3 && playerRef.current.hp > 0) {
-                triggerTextAnim('盘丝!', 'buff', 'player');
-                addLog(`🕸️ 【盘丝阵】生效！${ce.def.name}吐网将你【定身】！`);
-                setPlayer(p => ({...p, isStunned: true}));
+            // 蜘蛛精 动态盘丝阵
+            if (ce.def.id === 'spider' && playerRef.current.hp > 0) {
+                if (ce.hp <= 2 && ce.hand.length >= 2) {
+                    triggerTextAnim('剧毒盘丝!', 'damage', 'player');
+                    addLog(`🕸️ 【剧毒盘丝】生效！${ce.def.name}将你【定身】并造成 1 点毒伤！`);
+                    setPlayer(p => ({...p, isStunned: true, hp: Math.max(0, p.hp - 1)}));
+                } else if (ce.hp >= 3 && ce.hand.length >= 4) {
+                    triggerTextAnim('盘丝!', 'buff', 'player');
+                    addLog(`🕸️ 【盘丝阵】生效！${ce.def.name}吐网将你【定身】！`);
+                    setPlayer(p => ({...p, isStunned: true}));
+                }
             }
         }
     };
@@ -789,6 +902,18 @@ export default function XiYouSha() {
                 triggerTextAnim('闪避！', 'dodge', 'player');
                 addLog(`💨 你打出【腾云】，惊险躲开一击`);
                 setPlayer(p => ({ ...p, hand: p.hand.filter((_, i) => i !== dIdx) }));
+
+                // 牛魔王死斗追击
+                if (ce.def.id === 'bull' && ce.buffs?.bullRage) {
+                    setTimeout(() => {
+                        addLog(`🐂 【死斗】追击！牛魔王强行震落了你 2 张手牌！`);
+                        setPlayer(p => {
+                            let newH = [...p.hand];
+                            for(let j=0; j<2 && newH.length>0; j++) newH.splice(Math.floor(Math.random()*newH.length), 1);
+                            return {...p, hand: newH};
+                        });
+                    }, 500);
+                }
             } else {
                 triggerTextAnim(`-${dmg}`, 'damage', 'player');
                 addLog(`🩸 你被击中，失去 ${dmg} 点体力`);
@@ -887,6 +1012,7 @@ export default function XiYouSha() {
     return (
         <div className="relative flex flex-col h-screen bg-stone-200 overflow-hidden font-sans">
 
+            {/* 顶部妖王列表 */}
             <div className="relative z-20 bg-stone-800 text-white p-4 flex flex-col items-center shadow-xl border-b border-stone-700">
                 <div className="flex gap-4 w-full overflow-x-auto pb-2 scrollbar-hide justify-center px-4">
                     {enemies.map((enemy) => (
@@ -899,7 +1025,7 @@ export default function XiYouSha() {
                             onClick={() => handleEnemyClick(enemy.uid)}
                         >
                             <div className="relative text-5xl bg-stone-700 w-16 h-16 flex items-center justify-center rounded-xl border border-stone-500 flex-shrink-0 cursor-pointer hover:border-white transition-colors"
-                                 onClick={(e) => { e.stopPropagation(); setShowSkillModal({type: 'enemy', def: enemy.def}); }}>
+                                 onClick={(e) => { e.stopPropagation(); setShowSkillModal({type: 'enemy', entity: enemy}); }}>
                                 {enemy.def.avatar}
                                 {enemy.isStunned && <div className="absolute -bottom-2 -right-2 bg-yellow-500 text-stone-900 font-bold text-[10px] px-1.5 rounded shadow">定身</div>}
                                 {enemy.wine > 0 && <div className="absolute -top-2 -right-2 bg-amber-500 text-white text-[10px] px-1.5 rounded-full shadow animate-bounce">伤害+</div>}
@@ -945,6 +1071,7 @@ export default function XiYouSha() {
                 </div>
             )}
 
+            {/* 日志区 */}
             <div ref={logContainerRef} className={`absolute inset-0 z-0 overflow-y-auto px-6 pt-40 pb-[42vh] scroll-smooth ${phase === 'PLAYER_CHOOSE_TARGET' ? 'opacity-30 blur-sm pointer-events-none' : ''} transition-all duration-300`}>
                 <div className="flex flex-col items-center space-y-4 min-h-full">
                     <div className="flex-1"></div>
@@ -960,6 +1087,7 @@ export default function XiYouSha() {
                 </div>
             </div>
 
+            {/* 动画层 */}
             {animatingCard && (
                 <div className="absolute inset-0 z-[60] flex pointer-events-none">
                     <div key={animatingCard.id} className={`
@@ -987,6 +1115,7 @@ export default function XiYouSha() {
                 </div>
             )}
 
+            {/* 底部玩家操作区 */}
             <div className={`absolute bottom-0 left-0 right-0 h-[40vh] flex flex-row z-40 p-4 backdrop-blur-md border-t transition-all duration-500 ${
                 phase === 'PLAYER_DISCARD' ? 'bg-slate-900/95 border-slate-700' : 'bg-white/95 border-stone-200 shadow-[0_-10px_40px_-15px_rgba(0,0,0,0.1)]'
             }`}>
@@ -1084,7 +1213,7 @@ export default function XiYouSha() {
                         {!isPlayerInfoHidden ? (
                             <div className="flex items-center gap-4 flex-row-reverse text-right bg-white/60 p-2 pr-0 rounded-2xl mt-4">
                                 <div className="relative text-5xl bg-stone-100 w-16 h-16 flex items-center justify-center rounded-2xl border-2 border-stone-300 shadow-inner cursor-pointer hover:border-yellow-500 hover:scale-105 transition-all flex-shrink-0"
-                                     onClick={() => setShowSkillModal({type: 'player', def: player.def})}>
+                                     onClick={() => setShowSkillModal({type: 'player', entity: player})}>
                                     {player.def?.avatar}
                                     {player.wine > 0 && (
                                         <div className="absolute -top-3 -right-3 bg-amber-500 text-white text-[10px] font-black px-2 py-0.5 rounded-full border border-amber-300 animate-bounce shadow-md">
@@ -1118,7 +1247,7 @@ export default function XiYouSha() {
                             </div>
                         ) : (
                             <div className="relative text-3xl bg-stone-100 w-12 h-12 flex items-center justify-center rounded-xl border-2 border-stone-300 shadow-md cursor-pointer hover:border-yellow-500 hover:scale-105 transition-all mt-2"
-                                 onClick={() => setShowSkillModal({type: 'player', def: player.def})}>
+                                 onClick={() => setShowSkillModal({type: 'player', entity: player})}>
                                 {player.def?.avatar}
                                 <div className="absolute -bottom-2 -left-2 bg-red-500 text-white text-[10px] font-black px-1.5 py-0.5 rounded-full border border-red-300 shadow">
                                     HP {player.hp}
@@ -1129,23 +1258,51 @@ export default function XiYouSha() {
                 </div>
             </div>
 
+            {/* 角色与装备详情综合弹窗 */}
             {showSkillModal && (
                 <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[80] flex items-center justify-center p-4" onClick={() => setShowSkillModal(null)}>
                     <div className="bg-stone-800 text-white w-full max-w-sm rounded-3xl overflow-hidden shadow-2xl border-4 border-stone-600 p-6 relative animate-in zoom-in-95 duration-200" onClick={e => e.stopPropagation()}>
                         <button onClick={() => setShowSkillModal(null)} className="absolute top-4 right-4 p-2 hover:bg-stone-700 rounded-full text-stone-400 hover:text-white transition-colors"><X size={20}/></button>
                         <div className="flex flex-col items-center mt-2">
-                            <div className="text-7xl mb-4 drop-shadow-lg">{showSkillModal.def.avatar}</div>
-                            <h3 className="text-2xl font-black mb-1 text-yellow-500">{showSkillModal.def.name}</h3>
+                            <div className="text-7xl mb-4 drop-shadow-lg">{showSkillModal.entity.def.avatar}</div>
+                            <h3 className="text-2xl font-black mb-1 text-yellow-500">{showSkillModal.entity.def.name}</h3>
                             <div className="flex items-center gap-1 text-red-400 mb-6 font-mono text-sm">
-                                <Heart size={14} fill="currentColor"/> 体力上限: {showSkillModal.def.maxHp}
+                                <Heart size={14} fill="currentColor"/> 当前体力: {showSkillModal.entity.hp} / {showSkillModal.entity.def.maxHp}
                             </div>
-                            <div className="w-full bg-stone-900/80 p-4 rounded-xl border border-stone-700 text-left">
-                                <div className="text-yellow-400 text-sm font-black mb-2 flex items-center gap-1.5"><Zap size={16}/> {showSkillModal.def.activeName}</div>
-                                <div className="text-[13px] text-stone-300 leading-relaxed mb-5">{showSkillModal.def.activeDesc}</div>
 
-                                <div className="text-blue-400 text-sm font-black mb-2 flex items-center gap-1.5"><Shield size={16}/> {showSkillModal.def.passiveName}</div>
-                                <div className="text-[13px] text-stone-300 leading-relaxed">{showSkillModal.def.passiveDesc}</div>
+                            {/* 技能信息 */}
+                            <div className="w-full bg-stone-900/80 p-4 rounded-xl border border-stone-700 text-left mb-4">
+                                <div className="text-yellow-400 text-sm font-black mb-2 flex items-center gap-1.5"><Zap size={16}/> {showSkillModal.entity.def.activeName}</div>
+                                <div className="text-[13px] text-stone-300 leading-relaxed mb-5">{showSkillModal.entity.def.activeDesc}</div>
+
+                                <div className="text-blue-400 text-sm font-black mb-2 flex items-center gap-1.5"><Shield size={16}/> {showSkillModal.entity.def.passiveName}</div>
+                                <div className="text-[13px] text-stone-300 leading-relaxed">{showSkillModal.entity.def.passiveDesc}</div>
                             </div>
+
+                            {/* 装备信息 (如果有的话) */}
+                            {(showSkillModal.entity.equips.weapon || showSkillModal.entity.equips.armor) && (
+                                <div className="w-full bg-stone-900/50 p-3 rounded-xl border border-stone-600 text-left mt-2">
+                                    <div className="text-stone-400 text-xs font-bold mb-3 border-b border-stone-700 pb-1">当前装备：</div>
+
+                                    {showSkillModal.entity.equips.weapon && (
+                                        <div className="mb-3">
+                                            <div className="text-rose-400 text-sm font-black mb-1 flex items-center gap-1.5">
+                                                <Sword size={14} /> {showSkillModal.entity.equips.weapon.name}
+                                            </div>
+                                            <div className="text-xs text-stone-400 leading-snug">{showSkillModal.entity.equips.weapon.desc}</div>
+                                        </div>
+                                    )}
+
+                                    {showSkillModal.entity.equips.armor && (
+                                        <div>
+                                            <div className="text-amber-400 text-sm font-black mb-1 flex items-center gap-1.5">
+                                                <Shirt size={14} /> {showSkillModal.entity.equips.armor.name}
+                                            </div>
+                                            <div className="text-xs text-stone-400 leading-snug">{showSkillModal.entity.equips.armor.desc}</div>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
                         </div>
                     </div>
                 </div>
