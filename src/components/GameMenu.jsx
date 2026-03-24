@@ -229,19 +229,13 @@ export default function GameMenu({
                                                 setAutoSpin(false);
                                                 setWheelRotation(-idx * playerStep);
                                             }}
-                                            onDoubleClick={(e) => {
-                                                e.stopPropagation();
-                                                setSelectedPlayerDef(char);
-                                                setGameState(gameMode === 'level' ? 'MENU_LEVEL' : 'MENU_ENEMY');
-                                            }}
                                             className={`w-28 h-28 -ml-14 -mt-14 rounded-2xl border-3 flex flex-col items-center justify-center transition-all cursor-pointer select-none ${
                                             isFocused ? 'bg-yellow-400 text-stone-900 border-yellow-300 scale-110 shadow-xl shadow-yellow-500/30' : 'bg-stone-700/90 text-white border-stone-500 hover:bg-stone-600 hover:border-stone-400'
                                             }`}
-                                            title="单击选中，双击确认"
+                                            title="单击选中"
                                         >
                                             <div className="text-4xl">{char.avatar}</div>
                                             <div className="text-xs font-bold mt-1">{char.name}</div>
-                                            {isFocused && <div className="absolute -bottom-6 left-1/2 -translate-x-1/2 bg-yellow-500 text-stone-900 text-xs px-3 py-1 rounded-full font-bold">双击选择</div>}
                                         </button>
                                     </div>
                                 );
