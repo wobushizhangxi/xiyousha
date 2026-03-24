@@ -2,20 +2,31 @@ import React, { useState, useEffect, useRef } from 'react';
 import {
     Heart, ScrollText, AlertCircle, RotateCcw, Check, Zap, Shield, X, Sword, Shirt, Search, Wind, CloudLightning, CloudRain
 } from 'lucide-react';
-import { CARD_TYPES, CARDS_DB, DECK_CONFIG, WEATHERS } from './config/gameConfig';
+import { CARD_TYPES, CARDS_DB, DECK_CONFIG, WEATHERS, ENEMY_CHARACTERS } from './config/gameConfig';
+import { LEVELS } from './config/levelConfig';
 import GameMenu from './components/GameMenu';
 import GameCard from './components/GameCard';
 import HistoryModal from './components/HistoryModal';
 
 const delay = (ms) => new Promise(res => setTimeout(res, ms));
+const AUTO_SAVE_KEY = 'xiyousha_battle_auto_save_v1';
+const MANUAL_SAVE_PREFIX = 'xiyousha_battle_manual_slot_';
 
 export default function XiYouSha() {
     const scrollRef = useRef(null);
     const logContainerRef = useRef(null);
     const deckRef = useRef([]);
 
-    const [gameState, setGameState] = useState('MENU_PLAYER');
+    const [gameState, setGameState] = useState('MENU_MODE');
     const [selectedPlayerDef, setSelectedPlayerDef] = useState(null);
+    const [gameMode, setGameMode] = useState('classic');
+    const [currentLevelId, setCurrentLevelId] = useState(null);
+    const [levelResult, setLevelResult] = useState(null);
+    const [saveSlots, setSaveSlots] = useState({ auto: false, 1: false, 2: false, 3: false });
+    const [unlockedLevel, setUnlockedLevel] = useState(() => {
+        const v = Number(localStorage.getItem('xiyousha_unlocked_level') || 1);
+        return Number.isFinite(v) ? Math.max(1, Math.min(v, LEVELS.length)) : 1;
+    });
 
     const [player, setPlayer] = useState({ id: '', def: null, hp: 4, maxHp: 4, hand: [], wine: 0, isStunned: false, equips: { weapon: null, armor: null }, buffs: {} });
     const [enemies, setEnemies] = useState([]);
@@ -50,6 +61,90 @@ export default function XiYouSha() {
     const [isPlayerInfoHidden, setIsPlayerInfoHidden] = useState(false);
     const [showHandModal, setShowHandModal] = useState(null);
 
+    const refreshSaveSlots = () => {
+        setSaveSlots({
+            auto: !!localStorage.getItem(AUTO_SAVE_KEY),
+            1: !!localStorage.getItem(`${MANUAL_SAVE_PREFIX}1`),
+            2: !!localStorage.getItem(`${MANUAL_SAVE_PREFIX}2`),
+            3: !!localStorage.getItem(`${MANUAL_SAVE_PREFIX}3`),
+        });
+    };
+
+    useEffect(() => {
+        refreshSaveSlots();
+    }, []);
+
+    const clearBattleSave = (slot = 'auto') => {
+        const key = slot === 'auto' ? AUTO_SAVE_KEY : `${MANUAL_SAVE_PREFIX}${slot}`;
+        localStorage.removeItem(key);
+        refreshSaveSlots();
+    };
+
+    const getBattleSnapshot = () => {
+        const snapshot = {
+            gameMode,
+            currentLevelId,
+            selectedPlayerDef,
+            player,
+            enemies,
+            weather,
+            phase,
+            hasAttacked,
+            hasUsedActiveSkill,
+            deck: deckRef.current,
+            currentTurnLogs,
+            allHistoryLogs,
+            unlockedLevel
+        };
+        return snapshot;
+    };
+
+    const saveBattleSnapshot = (slot = 'auto') => {
+        const key = slot === 'auto' ? AUTO_SAVE_KEY : `${MANUAL_SAVE_PREFIX}${slot}`;
+        localStorage.setItem(key, JSON.stringify(getBattleSnapshot()));
+        refreshSaveSlots();
+    };
+
+    const resumeSavedBattle = (slot = 'auto') => {
+        const key = slot === 'auto' ? AUTO_SAVE_KEY : `${MANUAL_SAVE_PREFIX}${slot}`;
+        const raw = localStorage.getItem(key);
+        if (!raw) return;
+        try {
+            const data = JSON.parse(raw);
+            if (!data?.player || !data?.enemies || !data?.weather) return;
+
+            setGameMode(data.gameMode || 'classic');
+            setCurrentLevelId(data.currentLevelId ?? null);
+            setSelectedPlayerDef(data.selectedPlayerDef || null);
+            setPlayer(data.player);
+            setEnemies(data.enemies);
+            setWeather(data.weather);
+            setPhase(data.phase || 'PLAYER_PLAY');
+            setHasAttacked(!!data.hasAttacked);
+            setHasUsedActiveSkill(!!data.hasUsedActiveSkill);
+            setCurrentTurnLogs(Array.isArray(data.currentTurnLogs) ? data.currentTurnLogs : []);
+            setAllHistoryLogs(Array.isArray(data.allHistoryLogs) ? data.allHistoryLogs : []);
+            if (Array.isArray(data.deck)) deckRef.current = data.deck;
+            if (data.unlockedLevel) setUnlockedLevel(prev => Math.max(prev, data.unlockedLevel));
+
+            setPendingCard(null);
+            setPendingSkill(null);
+            setPromptState(null);
+            setDiscardSelection([]);
+            setShowHistory(false);
+            setShowSkillModal(null);
+            setShowHandModal(null);
+            setLevelResult(null);
+
+            isGameOverLogged.current = false;
+            processedDeadEnemies.current = new Set();
+            isGameStartedRef.current = true;
+            setGameState('PLAYING');
+        } catch {
+            clearBattleSave(slot);
+        }
+    };
+
     const addLog = (msg, isNewRound = false) => {
         if (isNewRound) setCurrentTurnLogs([msg]);
         else setCurrentTurnLogs(prev => [...prev, msg]);
@@ -57,12 +152,14 @@ export default function XiYouSha() {
     };
 
     const triggerCardAnim = (card, targetUid) => {
-        setAnimatingCard({ card, targetUid, id: Date.now() });
+        const now = Date.now();
+        setAnimatingCard({ card, targetUid, id: now });
         setTimeout(() => setAnimatingCard(null), 1200);
     };
 
     const triggerTextAnim = (text, type, targetUid) => {
-        setAnimatingText({ text, type, targetUid, id: Date.now() });
+        const now = Date.now();
+        setAnimatingText({ text, type, targetUid, id: now });
         setTimeout(() => setAnimatingText(null), 1000);
     };
 
@@ -136,7 +233,7 @@ export default function XiYouSha() {
         return Math.max(0, player.hand.length - limit);
     };
 
-    const initGame = (enemiesDefs) => {
+    const initGame = (enemiesDefs, options = {}) => {
         const newDeck = createDeck();
         const pHand = newDeck.splice(0, 4);
 
@@ -154,9 +251,11 @@ export default function XiYouSha() {
             hand: pHand, wine: 0, isStunned: false, equips: { weapon: null, armor: null }, buffs: {}
         });
         setEnemies(initEnemies);
-        setWeather(WEATHERS.NORMAL);
+        const weatherId = options.startWeather || 'NORMAL';
+        setWeather(WEATHERS[weatherId] || WEATHERS.NORMAL);
 
         setGameState('PLAYING');
+        setLevelResult(null);
         setPhase('IDLE');
         setDiscardSelection([]);
         setHasAttacked(false);
@@ -165,14 +264,35 @@ export default function XiYouSha() {
         processedDeadEnemies.current = new Set();
 
         addLog("=== 游戏开始 ===", true);
+        if (options.levelName) addLog(`🏯 关卡挑战：${options.levelName}`);
         addLog(`你化身为 ${selectedPlayerDef.name}，迎战 ${initEnemies.length} 位妖王！`);
         addLog("双方各摸 4 张牌...");
 
         setTimeout(startPlayerTurn, 1500);
     };
 
+    useEffect(() => {
+        if (gameState !== 'PLAYING') return;
+        saveBattleSnapshot();
+    }, [
+        gameState,
+        gameMode,
+        currentLevelId,
+        selectedPlayerDef,
+        player,
+        enemies,
+        weather,
+        phase,
+        hasAttacked,
+        hasUsedActiveSkill,
+        currentTurnLogs,
+        allHistoryLogs,
+        unlockedLevel
+    ]);
+
     const isGameOverLogged = useRef(false);
     const processedDeadEnemies = useRef(new Set());
+    const isLevelMode = gameMode === 'level';
 
     useEffect(() => {
         if (gameState !== 'PLAYING') return;
@@ -199,13 +319,47 @@ export default function XiYouSha() {
         if (player.hp <= 0 && !isGameOverLogged.current) {
             isGameOverLogged.current = true;
             addLog("☠️ 你被击败了！游戏结束！", true);
-            setTimeout(() => { setGameState('MENU_PLAYER'); isGameStartedRef.current = false; }, 3500);
+            clearBattleSave();
+            if (isLevelMode && currentLevelId) {
+                setTimeout(() => {
+                    setLevelResult({ win: false, levelId: currentLevelId });
+                    setGameState('LEVEL_RESULT');
+                    isGameStartedRef.current = false;
+                }, 1200);
+            } else {
+                setTimeout(() => { setGameState('MENU_MODE'); isGameStartedRef.current = false; }, 3500);
+            }
         } else if (isGameStartedRef.current && aliveEnemies.length === 0 && !anyDied && !isGameOverLogged.current) {
             isGameOverLogged.current = true;
             addLog(`🎉 恭喜！你成功降伏了所有妖王！`, true);
-            setTimeout(() => { setGameState('MENU_PLAYER'); isGameStartedRef.current = false; }, 3500);
+            clearBattleSave();
+            if (isLevelMode && currentLevelId) {
+                const nextUnlock = Math.min(LEVELS.length, Math.max(unlockedLevel, currentLevelId + 1));
+                if (nextUnlock !== unlockedLevel) {
+                    setUnlockedLevel(nextUnlock);
+                    localStorage.setItem('xiyousha_unlocked_level', String(nextUnlock));
+                }
+                setTimeout(() => {
+                    setLevelResult({ win: true, levelId: currentLevelId });
+                    setGameState('LEVEL_RESULT');
+                    isGameStartedRef.current = false;
+                }, 1200);
+            } else {
+                setTimeout(() => { setGameState('MENU_MODE'); isGameStartedRef.current = false; }, 3500);
+            }
         }
-    }, [enemies, player.hp, gameState]);
+    }, [enemies, player.hp, gameState, isLevelMode, currentLevelId, unlockedLevel]);
+
+    const startLevelGame = (levelId) => {
+        const level = LEVELS.find(l => l.id === levelId);
+        if (!level || !selectedPlayerDef) return;
+        const defs = level.enemyIds
+            .map(id => ENEMY_CHARACTERS.find(e => e.id === id))
+            .filter(Boolean);
+        if (defs.length === 0) return;
+        setCurrentLevelId(levelId);
+        initGame(defs, { levelName: level.name, startWeather: level.startWeather });
+    };
 
     const rollWeather = (forceId = null) => {
         if (forceId && WEATHERS[forceId]) {
@@ -216,7 +370,8 @@ export default function XiYouSha() {
             return;
         }
         const weatherKeys = Object.keys(WEATHERS).filter(k => k !== weatherRef.current.id);
-        const randomKey = weatherKeys[Math.floor(Math.random() * weatherKeys.length)];
+        const randomKeyIdx = Math.floor(Math.random() * weatherKeys.length);
+        const randomKey = weatherKeys[randomKeyIdx];
         const newWeather = WEATHERS[randomKey];
         setWeather(newWeather);
 
@@ -671,8 +826,8 @@ export default function XiYouSha() {
                 let stolenCards = [];
                 for(let i=0; i<stealCount; i++) {
                     if(tHand.length > 0) {
-                        const idx = Math.floor(Math.random() * tHand.length);
-                        stolenCards.push(tHand.splice(idx, 1)[0]);
+                        const stealRandomIdx = Math.floor(Math.random() * tHand.length);
+                        stolenCards.push(tHand.splice(stealRandomIdx, 1)[0]);
                     }
                 }
 
@@ -692,7 +847,10 @@ export default function XiYouSha() {
 
                 let tHand = [...te.hand];
                 for(let i=0; i<destroyCount; i++) {
-                    if(tHand.length > 0) tHand.splice(Math.floor(Math.random() * tHand.length), 1);
+                    if(tHand.length > 0) {
+                        const destroyRandomIdx = Math.floor(Math.random() * tHand.length);
+                        tHand.splice(destroyRandomIdx, 1);
+                    }
                 }
 
                 if (destroyCount === 2) addLog(`🌪️ 【天气加成】狂风大作！芭蕉扇威能大涨，吹飞了 ${te.def.name} 2 张手牌`);
@@ -829,130 +987,140 @@ export default function XiYouSha() {
             aiHasUsedSkill = true;
             triggerTextAnim('飞沙走石!', 'damage', 'player');
             addLog(`🌪️ ${ce.def.name} 借助狂风发动【飞沙走石】！强行卷走你 1 张牌！`);
-            setPlayer(p => ({ ...p, hand: p.hand.filter((_, i) => i !== Math.floor(Math.random() * p.hand.length)) }));
+            const pHandHuangFeng = playerRef.current.hand;
+            const rIdxHuangFeng = Math.floor(Math.random() * pHandHuangFeng.length);
+            setPlayer(p => ({ ...p, hand: p.hand.filter((_, i) => i !== rIdxHuangFeng) }));
             await delay(800);
         }
 
         if (ce.def.id === 'gold' && !ce.isStunned && playerRef.current.hand.length > 0) {
             triggerTextAnim('紫金葫芦!', 'buff', ce.uid);
             setPlayer(p => {
-                const idx = Math.floor(Math.random() * p.hand.length);
-                const stolen = p.hand[idx];
+                const idxGold = Math.floor(Math.random() * p.hand.length);
+                const stolen = p.hand[idxGold];
                 setEnemies(prev => prev.map(e => e.uid === ce.uid ? {...e, hand: [...e.hand, stolen]} : e));
-                return { ...p, hand: p.hand.filter((_, i) => i !== idx) };
+                return { ...p, hand: p.hand.filter((_, i) => i !== idxGold) };
             });
             addLog(`✨ 【紫金葫芦】发威！${ce.def.name} 吸走了你 1 张手牌！`);
             await delay(800);
         }
 
-        ce = getEnemy();
-        if (ce.def.id === 'bull' && !ce.isStunned) {
-            if (ce.hp === 1) {
+        let currentEnemy = getEnemy();
+        if (currentEnemy.def.id === 'bull' && !currentEnemy.isStunned) {
+            if (currentEnemy.hp === 1) {
                 aiHasUsedSkill = true;
-                triggerTextAnim('死斗!', 'buff', ce.uid);
-                addLog(`🐂 ${ce.def.name} 发动【死斗模式】！摸2张牌，下击伤害+2！`);
-                drawCards('enemy', ce.uid, 2);
-                setEnemies(prev => prev.map(e => e.uid === ce.uid ? {...e, wine: e.wine + 2, buffs: {...e.buffs, bullRage: true}} : e));
+                triggerTextAnim('死斗!', 'buff', currentEnemy.uid);
+                addLog(`🐂 ${currentEnemy.def.name} 发动【死斗模式】！摸 2 张牌，下击伤害 +2！`);
+                drawCards('enemy', currentEnemy.uid, 2);
+                setEnemies(prev => prev.map(e => e.uid === currentEnemy.uid ? {...e, wine: e.wine + 2, buffs: {...e.buffs, bullRage: true}} : e));
                 await delay(800);
-            } else if (ce.hp <= 3) {
+            } else if (currentEnemy.hp <= 3) {
                 aiHasUsedSkill = true;
-                triggerTextAnim('狂暴!', 'buff', ce.uid);
-                addLog(`🐂 ${ce.def.name} 发动【狂暴】！额外摸1张牌，下击伤害+1！`);
-                drawCards('enemy', ce.uid, 1);
-                setEnemies(prev => prev.map(e => e.uid === ce.uid ? {...e, wine: e.wine + 1} : e));
+                triggerTextAnim('狂暴!', 'buff', currentEnemy.uid);
+                addLog(`🐂 ${currentEnemy.def.name} 发动【狂暴】！额外摸 1 张牌，下击伤害 +1！`);
+                drawCards('enemy', currentEnemy.uid, 1);
+                setEnemies(prev => prev.map(e => e.uid === currentEnemy.uid ? {...e, wine: e.wine + 1} : e));
                 await delay(800);
             }
         }
-
-        ce = getEnemy();
-        if (ce.def.id === 'redboy' && !aiHasUsedSkill && ce.hp > 1 && !ce.isStunned) {
+        
+        currentEnemy = getEnemy();
+        if (currentEnemy.def.id === 'redboy' && !aiHasUsedSkill && currentEnemy.hp > 1 && !currentEnemy.isStunned) {
             if (playerRef.current.equips.armor?.id === CARD_TYPES.EQUIP_ARMOR_CLOTH) {
-                addLog(`🔥 ${ce.def.name}试图发动【吐火】，但被【锦襕袈裟】完美防御！`);
+                addLog(`🔥 ${currentEnemy.def.name}试图发动【吐火】，但被【锦襕袈裟】完美防御！`);
             } else {
                 aiHasUsedSkill = true;
                 triggerTextAnim('吐火!', 'damage', 'player');
-                addLog(`🔥 ${ce.def.name}消耗 1 点体力发动【吐火】！烧伤你 1 点体力！`);
-                setEnemies(prev => prev.map(e => e.uid === ce.uid ? {...e, hp: e.hp - 1} : e));
+                addLog(`🔥 ${currentEnemy.def.name}消耗 1 点体力发动【吐火】！烧伤你 1 点体力！`);
+                setEnemies(prev => prev.map(e => e.uid === currentEnemy.uid ? {...e, hp: e.hp - 1} : e));
                 setPlayer(p => ({...p, hp: Math.max(0, p.hp - 1)}));
             }
             await delay(800);
         }
 
-        ce = getEnemy();
-        if (!ce || playerRef.current.hp <= 0 || ce.hp <= 0) return;
+        currentEnemy = getEnemy();
+        if (!currentEnemy || playerRef.current.hp <= 0 || currentEnemy.hp <= 0) return;
 
-        if (ce.isStunned) {
-            addLog(`🌀 ${ce.def.name}被定身，本回合无法行动！`);
-            setEnemies(prev => prev.map(e => e.uid === ce.uid ? { ...e, isStunned: false } : e));
+        if (currentEnemy.isStunned) {
+            addLog(`🌀 ${currentEnemy.def.name}被定身，本回合无法行动！`);
+            setEnemies(prev => prev.map(e => e.uid === currentEnemy.uid ? { ...e, isStunned: false } : e));
             return;
         }
 
-        drawCards('enemy', ce.uid, 2);
+        drawCards('enemy', currentEnemy.uid, 2);
         await delay(1000);
 
         let aiHasAttacked = false;
 
         while (true) {
             if (playerRef.current.hp <= 0) break;
-            ce = getEnemy();
-            if (!ce || ce.hp <= 0) break;
+            currentEnemy = getEnemy();
+            if (!currentEnemy || currentEnemy.hp <= 0) break;
 
             let playIdx = -1;
 
-            if (ce.def.id === 'gold' && !aiHasUsedSkill && ce.hand.length < ce.hp && ce.hp < ce.maxHp) {
+            if (currentEnemy.def.id === 'gold' && !aiHasUsedSkill && currentEnemy.hand.length < currentEnemy.hp && currentEnemy.hp < currentEnemy.maxHp) {
                 aiHasUsedSkill = true;
-                triggerTextAnim('玉净瓶!', 'heal', ce.uid);
-                addLog(`✨ ${ce.def.name}发动【玉净瓶】，恢复了 1 点体力！`);
-                setEnemies(prev => prev.map(e => e.uid === ce.uid ? {...e, hp: e.hp + 1} : e));
+                triggerTextAnim('玉净瓶!', 'heal', currentEnemy.uid);
+                addLog(`✨ ${currentEnemy.def.name}发动【玉净瓶】，恢复了 1 点体力！`);
+                setEnemies(prev => prev.map(e => e.uid === currentEnemy.uid ? {...e, hp: e.hp + 1} : e));
                 await delay(800);
                 continue;
             }
 
-            if (ce.def.id === 'bone' && !aiHasUsedSkill) {
+            if (currentEnemy.def.id === 'bone' && !aiHasUsedSkill) {
                 aiHasUsedSkill = true;
-                triggerTextAnim('吸魂!', 'buff', ce.uid);
-                if (ce.hp === 1) {
+                triggerTextAnim('吸魂!', 'buff', currentEnemy.uid);
+                if (currentEnemy.hp === 1) {
                     if (playerRef.current.hand.length > 0) {
-                        const pHand = playerRef.current.hand;
-                        const rIdx = Math.floor(Math.random() * pHand.length);
-                        const stolen = pHand[rIdx];
-                        addLog(`💀 【九阴白骨】！${ce.def.name}强行夺走你1张牌并恢复1点体力！`);
-                        setPlayer(p => ({...p, hand: p.hand.filter((_, i) => i !== rIdx)}));
-                        setEnemies(prev => prev.map(e => e.uid === ce.uid ? {...e, hp: Math.min(e.maxHp, e.hp + 1), hand: [...e.hand, stolen]} : e));
+                        const pHandBone1 = playerRef.current.hand;
+                        const rIdxBone1 = Math.floor(Math.random() * pHandBone1.length);
+                        const stolen = pHandBone1[rIdxBone1];
+                        addLog(`💀 【九阴白骨】！${currentEnemy.def.name}强行夺走你 1 张牌并恢复 1 点体力！`);
+                        setPlayer(p => ({...p, hand: p.hand.filter((_, i) => i !== rIdxBone1)}));
+                        setEnemies(prev => prev.map(e => e.uid === currentEnemy.uid ? {...e, hp: Math.min(e.maxHp, e.hp + 1), hand: [...e.hand, stolen]} : e));
+                    } else {
+                        addLog(`💀 【九阴白骨】发动失败，你已无手牌！`);
                     }
-                } else if (ce.hp === 2) {
+                } else if (currentEnemy.hp === 2) {
                     if (playerRef.current.hand.length > 0) {
-                        const pHand = playerRef.current.hand;
-                        const rIdx = Math.floor(Math.random() * pHand.length);
-                        const dropped = pHand[rIdx];
-                        addLog(`💀 ${ce.def.name}无消耗发动【吸魂】！随机弃置了你 1 张手牌`);
-                        setPlayer(p => ({...p, hand: p.hand.filter((_, i) => i !== rIdx)}));
+                        const pHandBone2 = playerRef.current.hand;
+                        const rIdxBone2 = Math.floor(Math.random() * pHandBone2.length);
+                        const dropped = pHandBone2[rIdxBone2];
+                        addLog(`💀 ${currentEnemy.def.name}无消耗发动【吸魂】！随机弃置了你 1 张手牌`);
+                        setPlayer(p => ({...p, hand: p.hand.filter((_, i) => i !== rIdxBone2)}));
                         if (dropped.id === CARD_TYPES.ATTACK || dropped.id === CARD_TYPES.DODGE) {
-                            addLog(`🩸 吸取精血，白骨精恢复 1 点体力！`);
-                            setEnemies(prev => prev.map(e => e.uid === ce.uid ? {...e, hp: Math.min(e.maxHp, e.hp + 1)} : e));
+                            addLog(`🩸 吸取精血，${currentEnemy.def.name}恢复 1 点体力！`);
+                            setEnemies(prev => prev.map(e => e.uid === currentEnemy.uid ? {...e, hp: Math.min(e.maxHp, e.hp + 1)} : e));
                         }
+                    } else {
+                        addLog(`💀 【吸魂】发动失败，你已无手牌！`);
                     }
                 } else {
-                    if (ce.hand.length > 0 && playerRef.current.hand.length > 0) {
-                        const pHand = playerRef.current.hand;
-                        const rIdx = Math.floor(Math.random() * pHand.length);
-                        addLog(`💀 ${ce.def.name}弃置1牌发动【吸魂】！随机弃置了你 1 张手牌`);
-                        setEnemies(prev => prev.map(e => e.uid === ce.uid ? {...e, hand: e.hand.filter((_, i) => i !== Math.floor(Math.random() * e.hand.length))} : e));
-                        setPlayer(p => ({...p, hand: p.hand.filter((_, i) => i !== rIdx)}));
+                    if (currentEnemy.hand.length > 0 && playerRef.current.hand.length > 0) {
+                        const pHandBone3 = playerRef.current.hand;
+                        const rIdxBone3 = Math.floor(Math.random() * pHandBone3.length);
+                        const enemyHandLen = currentEnemy.hand.length;
+                        const rIdxEnemyBone3 = Math.floor(Math.random() * enemyHandLen);
+                        addLog(`💀 ${currentEnemy.def.name}弃置 1 牌发动【吸魂】！随机弃置了你 1 张手牌`);
+                        setEnemies(prev => prev.map(e => e.uid === currentEnemy.uid ? {...e, hand: e.hand.filter((_, i) => i !== rIdxEnemyBone3)} : e));
+                        setPlayer(p => ({...p, hand: p.hand.filter((_, i) => i !== rIdxBone3)}));
+                    } else {
+                        addLog(`💀 【吸魂】发动失败，双方或一方已无手牌！`);
                     }
                 }
                 await delay(800);
                 continue;
             }
 
-            if (ce.def.id === 'spider' && !aiHasUsedSkill && ce.hand.length > 0 && playerRef.current.hand.length > 0) {
+            if (currentEnemy.def.id === 'spider' && !aiHasUsedSkill && currentEnemy.hand.length > 0 && playerRef.current.hand.length > 0) {
                 if (playerRef.current.equips.armor?.id === CARD_TYPES.EQUIP_ARMOR_CLOTH) {
-                    addLog(`🕸️ ${ce.def.name}试图发动【夺命蛛丝】，但被你的【锦襕袈裟】抵挡！`);
+                    addLog(`🕸️ ${currentEnemy.def.name}试图发动【夺命蛛丝】，但被你的【锦襕袈裟】抵挡！`);
                 } else if (playerRef.current.id === 'nezha') {
                     aiHasUsedSkill = true;
-                    addLog(`🪷 ${ce.def.name}发动【夺命蛛丝】，哪吒【莲花化身】免疫了毒伤！`);
+                    addLog(`🪷 ${currentEnemy.def.name}发动【夺命蛛丝】，哪吒【莲花化身】免疫了毒伤！`);
                     setEnemies(prev => prev.map(e => {
-                        if (e.uid === ce.uid) return {...e, hand: e.hand.filter((_, i) => i !== Math.floor(Math.random() * e.hand.length))};
+                        if (e.uid === currentEnemy.uid) return {...e, hand: e.hand.filter((_, i) => i !== Math.floor(Math.random() * e.hand.length))};
                         return e;
                     }));
                     setPlayer(p => ({
@@ -961,9 +1129,9 @@ export default function XiYouSha() {
                 } else {
                     aiHasUsedSkill = true;
                     triggerTextAnim('吐丝!', 'damage', 'player');
-                    addLog(`🕸️ ${ce.def.name}发动【夺命蛛丝】！强制使你失去 1 张牌并受 1 点伤害！`);
+                    addLog(`🕸️ ${currentEnemy.def.name}发动【夺命蛛丝】！强制使你失去 1 张牌并受 1 点伤害！`);
                     setEnemies(prev => prev.map(e => {
-                        if (e.uid === ce.uid) return {...e, hand: e.hand.filter((_, i) => i !== Math.floor(Math.random() * e.hand.length))};
+                        if (e.uid === currentEnemy.uid) return {...e, hand: e.hand.filter((_, i) => i !== Math.floor(Math.random() * e.hand.length))};
                         return e;
                     }));
                     setPlayer(p => ({
@@ -975,24 +1143,24 @@ export default function XiYouSha() {
                 await delay(800);
             }
 
-            if (ce.hp < ce.maxHp) {
-                playIdx = ce.hand.findIndex(c => c.id === CARD_TYPES.HEAL_BIG);
-                if (playIdx === -1) playIdx = ce.hand.findIndex(c => c.id === CARD_TYPES.HEAL);
+            if (currentEnemy.hp < currentEnemy.maxHp) {
+                playIdx = currentEnemy.hand.findIndex(c => c.id === CARD_TYPES.HEAL_BIG);
+                if (playIdx === -1) playIdx = currentEnemy.hand.findIndex(c => c.id === CARD_TYPES.HEAL);
             }
-            if (playIdx === -1) playIdx = ce.hand.findIndex(c => c.type === 'weapon' || c.type === 'armor');
-            if (playIdx === -1) playIdx = ce.hand.findIndex(c => [CARD_TYPES.SCAN, CARD_TYPES.DESTROY, CARD_TYPES.STEAL, CARD_TYPES.ARROW, CARD_TYPES.MIRROR, CARD_TYPES.PIERCE, CARD_TYPES.WHEELS, CARD_TYPES.WEATHER_CHANGE, CARD_TYPES.THUNDER_STRIKE].includes(c.id));
-            if (playIdx === -1 && !playerRef.current.isStunned) playIdx = ce.hand.findIndex(c => c.id === CARD_TYPES.STUN);
+            if (playIdx === -1) playIdx = currentEnemy.hand.findIndex(c => c.type === 'weapon' || c.type === 'armor');
+            if (playIdx === -1) playIdx = currentEnemy.hand.findIndex(c => [CARD_TYPES.SCAN, CARD_TYPES.DESTROY, CARD_TYPES.STEAL, CARD_TYPES.ARROW, CARD_TYPES.MIRROR, CARD_TYPES.PIERCE, CARD_TYPES.WHEELS, CARD_TYPES.WEATHER_CHANGE, CARD_TYPES.THUNDER_STRIKE].includes(c.id));
+            if (playIdx === -1 && !playerRef.current.isStunned) playIdx = currentEnemy.hand.findIndex(c => c.id === CARD_TYPES.STUN);
 
-            const aiCanAttackMultiple = ce.buffs?.wheelsActive;
+            const aiCanAttackMultiple = currentEnemy.buffs?.wheelsActive;
 
-            if (playIdx === -1 && ce.wine === 0 && (!aiHasAttacked || aiCanAttackMultiple)) {
-                if (ce.hand.some(c => c.id === CARD_TYPES.ATTACK)) playIdx = ce.hand.findIndex(c => c.id === CARD_TYPES.WINE);
+            if (playIdx === -1 && currentEnemy.wine === 0 && (!aiHasAttacked || aiCanAttackMultiple)) {
+                if (currentEnemy.hand.some(c => c.id === CARD_TYPES.ATTACK)) playIdx = currentEnemy.hand.findIndex(c => c.id === CARD_TYPES.WINE);
             }
-            if (playIdx === -1 && (!aiHasAttacked || aiCanAttackMultiple)) playIdx = ce.hand.findIndex(c => c.id === CARD_TYPES.ATTACK);
+            if (playIdx === -1 && (!aiHasAttacked || aiCanAttackMultiple)) playIdx = currentEnemy.hand.findIndex(c => c.id === CARD_TYPES.ATTACK);
 
             if (playIdx > -1) {
-                const card = ce.hand[playIdx];
-                await playCardAsAi(card, playIdx, ce.uid);
+                const card = currentEnemy.hand[playIdx];
+                await playCardAsAi(card, playIdx, currentEnemy.uid);
                 if (card.id === CARD_TYPES.ATTACK) aiHasAttacked = true;
                 await delay(1000);
             } else {
@@ -1000,20 +1168,20 @@ export default function XiYouSha() {
             }
         }
 
-        ce = getEnemy();
-        if (ce) {
-            const excess = ce.hand.length - ce.hp;
+        currentEnemy = getEnemy();
+        if (currentEnemy) {
+            const excess = currentEnemy.hand.length - currentEnemy.hp;
             if (excess > 0) {
-                addLog(`${ce.def.name} 弃置了 ${excess} 张牌`);
-                setEnemies(prev => prev.map(e => e.uid === ce.uid ? { ...e, hand: e.hand.slice(0, Math.max(0, e.hp)), buffs: { ...e.buffs, wheelsActive: false } } : e));
+                addLog(`${currentEnemy.def.name} 弃置了 ${excess} 张牌`);
+                setEnemies(prev => prev.map(e => e.uid === currentEnemy.uid ? { ...e, hand: e.hand.slice(0, Math.max(0, e.hp)), buffs: { ...e.buffs, wheelsActive: false } } : e));
             } else {
-                addLog(`${ce.def.name} 结束了回合`);
-                setEnemies(prev => prev.map(e => e.uid === ce.uid ? { ...e, buffs: { ...e.buffs, wheelsActive: false } } : e));
+                addLog(`${currentEnemy.def.name} 结束了回合`);
+                setEnemies(prev => prev.map(e => e.uid === currentEnemy.uid ? { ...e, buffs: { ...e.buffs, wheelsActive: false } } : e));
             }
 
-            if (ce.def.id === 'spider' && playerRef.current.hp > 0) {
-                if (ce.hp <= 2) {
-                    addLog(`🕸️ ${ce.def.name} 触发【盘丝阵】！`);
+            if (currentEnemy.def.id === 'spider' && playerRef.current.hp > 0) {
+                if (currentEnemy.hp <= 2) {
+                    addLog(`🕸️ ${currentEnemy.def.name} 触发【盘丝阵】！`);
                     if (playerRef.current.id === 'nezha') {
                         addLog(`🪷 哪吒【莲花化身】百毒不侵，无视了盘丝阵！`);
                     } else {
@@ -1261,8 +1429,8 @@ export default function XiYouSha() {
                 let stolenCards = [];
                 for(let i=0; i<stealCount; i++) {
                     if(pHand.length > 0) {
-                        const idx = Math.floor(Math.random() * pHand.length);
-                        stolenCards.push(pHand.splice(idx, 1)[0]);
+                        const stealIdx = Math.floor(Math.random() * pHand.length);
+                        stolenCards.push(pHand.splice(stealIdx, 1)[0]);
                     }
                 }
 
@@ -1277,22 +1445,40 @@ export default function XiYouSha() {
                 triggerTextAnim('摧毁！', 'buff', enemyUid);
                 const destroyCount = (weatherRef.current.id === 'STORM' && playerRef.current.hand.length >= 2) ? 2 : 1;
 
-                let pHand = [...playerRef.current.hand];
+                let pHandDestroyFinal = [...playerRef.current.hand];
                 for(let i=0; i<destroyCount; i++) {
-                    if(pHand.length > 0) pHand.splice(Math.floor(Math.random() * pHand.length), 1);
+                    if(pHandDestroyFinal.length > 0) {
+                        const randomDestroyIdxFinal = Math.floor(Math.random() * pHandDestroyFinal.length);
+                        pHandDestroyFinal.splice(randomDestroyIdxFinal, 1);
+                    }
                 }
 
                 if (destroyCount === 2) addLog(`🌪️ 【天气加成】狂风大作！${aiName} 的芭蕉扇威力大增，吹飞了你 2 张牌`);
                 else addLog(`🌪️ ${aiName} 挥舞【芭蕉扇】，扇飞了你 1 张牌`);
 
-                setPlayer(p => ({ ...p, hand: pHand }));
+                setPlayer(p => ({ ...p, hand: pHandDestroyFinal }));
             }
         }
         return null;
     };
 
     if (gameState.startsWith('MENU')) {
-        return <GameMenu gameState={gameState} setGameState={setGameState} setSelectedPlayerDef={setSelectedPlayerDef} initGame={initGame} />;
+        return (
+            <GameMenu
+                gameState={gameState}
+                setGameState={setGameState}
+                setSelectedPlayerDef={setSelectedPlayerDef}
+                initGame={initGame}
+                gameMode={gameMode}
+                setGameMode={setGameMode}
+                levels={LEVELS}
+                unlockedLevel={unlockedLevel}
+                startLevelGame={startLevelGame}
+                saveSlots={saveSlots}
+                resumeSavedBattle={resumeSavedBattle}
+                clearBattleSave={clearBattleSave}
+            />
+        );
     }
 
     const excessCards = getExcessCardsCount();
@@ -1351,9 +1537,23 @@ export default function XiYouSha() {
                     {enemies.filter(e=>e.hp>0).length === 0 && <div className="text-stone-400 py-4 font-bold tracking-widest">妖王已全部被消灭</div>}
                 </div>
 
-                <button onClick={() => setShowHistory(true)} className="absolute right-4 top-4 flex items-center gap-2 px-3 py-2 bg-stone-700 rounded-xl hover:bg-stone-600 border border-stone-500 transition-colors shadow-lg z-30">
-                    <ScrollText size={18} /> <span className="text-sm font-bold hidden sm:inline">战绩</span>
-                </button>
+                <div className="absolute right-4 top-4 z-30 flex flex-col items-end gap-2">
+                    <button onClick={() => setShowHistory(true)} className="flex items-center gap-2 px-3 py-2 bg-stone-700 rounded-xl hover:bg-stone-600 border border-stone-500 transition-colors shadow-lg">
+                        <ScrollText size={18} /> <span className="text-sm font-bold hidden sm:inline">战绩</span>
+                    </button>
+                    <div className="flex flex-wrap gap-1 justify-end max-w-[300px]">
+                        {[1, 2, 3].map(slot => (
+                            <button
+                                key={`save-${slot}`}
+                                onClick={() => saveBattleSnapshot(slot)}
+                                className="px-2.5 py-1 text-xs font-bold rounded-lg bg-emerald-700 hover:bg-emerald-600 border border-emerald-500"
+                                title={`存档到槽位 ${slot}`}
+                            >
+                                存档{slot}
+                            </button>
+                        ))}
+                    </div>
+                </div>
             </div>
 
             {phase === 'PLAYER_CHOOSE_TARGET' && (
@@ -1395,7 +1595,7 @@ export default function XiYouSha() {
                         ${animatingCard.card.bg} ${animatingCard.card.border}
                     `} style={getAnimStyle(animatingCard.targetUid, 'card')}>
                         <div className={`font-black text-3xl mb-3 ${animatingCard.card.color}`}>{animatingCard.card.name}</div>
-                        <animatingCard.card.icon size={80} className={`mx-auto my-3 ${animatingCard.card.color} animate-pulse`} />
+                        {React.createElement(animatingCard.card.icon, { size: 80, className: `mx-auto my-3 ${animatingCard.card.color} animate-pulse` })}
                         <div className="text-xs text-stone-700 font-bold bg-white/80 p-2 rounded-xl px-3 text-center w-5/6">{animatingCard.card.desc}</div>
                     </div>
                 </div>
@@ -1634,6 +1834,45 @@ export default function XiYouSha() {
                         <div className="p-4 border-t border-stone-600 bg-stone-900 flex justify-center">
                             <button onClick={() => setShowHandModal(null)} className="px-10 py-3 bg-cyan-600 hover:bg-cyan-500 text-white font-bold rounded-xl shadow-lg transition-all active:scale-95 text-lg">
                                 确认
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {gameState === 'LEVEL_RESULT' && levelResult && (
+                <div className="fixed inset-0 z-[120] bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+                    <div className="w-full max-w-lg bg-stone-900 border border-stone-600 rounded-3xl p-6 text-white shadow-2xl">
+                        <div className={`text-3xl font-black mb-3 ${levelResult.win ? 'text-emerald-400' : 'text-red-400'}`}>
+                            {levelResult.win ? '关卡通关！' : '挑战失败'}
+                        </div>
+                        <div className="text-stone-300 mb-6">
+                            {LEVELS.find(l => l.id === levelResult.levelId)?.name}
+                            {levelResult.win ? ' 已完成。' : '，请调整策略后再战。'}
+                        </div>
+                        <div className="flex flex-wrap gap-3">
+                            <button
+                                onClick={() => startLevelGame(levelResult.levelId)}
+                                className="px-5 py-3 rounded-xl bg-cyan-500 text-stone-950 font-black hover:bg-cyan-400"
+                            >
+                                重试本关
+                            </button>
+                            {levelResult.win && levelResult.levelId < unlockedLevel && (
+                                <button
+                                    onClick={() => startLevelGame(levelResult.levelId + 1)}
+                                    className="px-5 py-3 rounded-xl bg-emerald-500 text-stone-950 font-black hover:bg-emerald-400"
+                                >
+                                    下一关
+                                </button>
+                            )}
+                            <button
+                                onClick={() => {
+                                    setLevelResult(null);
+                                    setGameState('MENU_LEVEL');
+                                }}
+                                className="px-5 py-3 rounded-xl bg-stone-700 text-white font-bold hover:bg-stone-600"
+                            >
+                                返回关卡选择
                             </button>
                         </div>
                     </div>
